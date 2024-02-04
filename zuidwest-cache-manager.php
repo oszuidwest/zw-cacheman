@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZuidWest Cache Manager
  * Description: Purges cache for high-priority URLs immediately on post publishing and edits. Also queues associated taxonomy URLs for low-priority batch processing via WP-Cron.
- * Version: 0.1
+ * Version: 0.2
  * Author: Streekomroep ZuidWest
  */
 
@@ -82,7 +82,7 @@ function zwcache_debug_log($message)
     }
 }
 
-define('ZWCACHE_LOW_PRIORITY_STORE', 'zwcache_purge_urls');
+define('ZWCACHE_LOW_PRIORITY_STORE', 'zwcache_manager_low_priority_urls');
 define('ZWCACHE_CRON_HOOK', 'zwcache_manager_cron_hook');
 
 register_activation_hook(__FILE__, 'zwcache_activate');
@@ -99,11 +99,13 @@ function zwcache_add_cron_interval($schedules)
     if (!isset($schedules['every_minute'])) {
         $schedules['every_minute'] = [
             'interval' => 60,
-            'display'  => esc_html__('Every Minute'),
+            'display'  => esc_html__('Every minute'),
         ];
     }
     return $schedules;
 }
+
+add_filter('cron_schedules', 'zwcache_add_cron_interval');
 
 /**
  * Activates the plugin and schedules a WP-Cron event if not already scheduled.
@@ -113,7 +115,6 @@ function zwcache_activate()
     if (!wp_next_scheduled(ZWCACHE_CRON_HOOK)) {
         wp_schedule_event(time(), 'every_minute', ZWCACHE_CRON_HOOK);
     }
-    add_filter('cron_schedules', 'zwcache_add_cron_interval');
     zwcache_debug_log('Plugin activated and cron job scheduled.');
 }
 
@@ -182,7 +183,7 @@ function zwcache_process_queued_low_priority_urls()
         $batch = array_slice($queued_urls, $i, $batch_size);
         if (zwcache_purge_urls($batch)) {
             $queued_urls = array_diff($queued_urls, $batch);
-            zwcache_debug_log('Successfully purged a batch of URLs.');
+            zwcache_debug_log('Removed processed URLs from batch');
         }
     }
     update_option(ZWCACHE_LOW_PRIORITY_STORE, $queued_urls);
