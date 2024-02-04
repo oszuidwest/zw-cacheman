@@ -82,7 +82,7 @@ function zwcache_debug_log($message)
     }
 }
 
-define('ZWCACHE_LOW_PRIORITY_STORE', 'zwcache_manager_low_priority_urls');
+define('ZWCACHE_LOW_PRIORITY_STORE', 'zwcache_purge_urls');
 define('ZWCACHE_CRON_HOOK', 'zwcache_manager_cron_hook');
 
 register_activation_hook(__FILE__, 'zwcache_activate');
