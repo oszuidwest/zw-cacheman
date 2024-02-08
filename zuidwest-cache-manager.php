@@ -18,4 +18,3 @@ require_once 'src/hooks.php';
 require_once 'src/post.php';
 require_once 'src/purge.php';
 require_once 'src/utils.php';
-
