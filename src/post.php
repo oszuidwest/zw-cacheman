@@ -43,29 +43,3 @@ function zwcache_get_associated_taxonomy_urls($post_id)
     zwcache_debug_log(sprintf('Found %d associated taxonomy URLs.', count($urls)));
     return $urls;
 }
-
-/**
- * Retrieves URLs for all taxonomies associated with a given post.
- *
- * @param int $post_id ID of the post.
- * @return array URLs associated with the post's taxonomies.
- */
-function zwcache_get_associated_taxonomy_urls($post_id)
-{
-    zwcache_debug_log('Retrieving associated taxonomy URLs for post ID ' . $post_id . '.');
-    $urls = [];
-    $taxonomies = get_post_taxonomies($post_id);
-    foreach ($taxonomies as $taxonomy) {
-        $terms = get_the_terms($post_id, $taxonomy);
-        if ($terms && !is_wp_error($terms)) {
-            foreach ($terms as $term) {
-                $term_link = get_term_link($term, $taxonomy);
-                if (!is_wp_error($term_link)) {
-                    $urls[] = $term_link;
-                }
-            }
-        }
-    }
-    zwcache_debug_log(sprintf('Found %d associated taxonomy URLs.', count($urls)));
-    return $urls;
-}
