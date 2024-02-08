@@ -1,6 +1,6 @@
 # ZuidWest Cache Manager
 
-The ZuidWest Cache Manager is a WordPress plugin developed by Streekomroep ZuidWest designed to manage cache purging efficiently within the limits of non-enterprise Cloudflare accounts. Upon publishing or editing posts, the plugin immediately purges cache for the article and homepage URLs and queues associated taxonomy URLs for low-priority batch processing via WP-Cron.
+The ZuidWest Cache Manager is a WordPress plugin designed to manage high-traffic sites efficiently within the limits of non-enterprise Cloudflare accounts. Upon publishing or editing posts, the plugin immediately purges cache for the article and homepage URLs and queues associated taxonomy URLs for low-priority batch processing via WP-Cron.
 
 ## Features
 
