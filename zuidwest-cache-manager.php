@@ -105,6 +105,7 @@ class ZuidWestCacheManager {
             'zwcachePlugin'
         );
 
+        // Define fields with a compact array structure
         $fields = [
             ['zwcache_zone_id', 'Zone ID', 'text', ''],
             ['zwcache_api_key', 'API Key', 'password', ''],
@@ -112,18 +113,12 @@ class ZuidWestCacheManager {
             ['zwcache_debug_mode', 'Debug Mode', 'checkbox', 0]
         ];
 
+        // Register all fields in a loop
         foreach ($fields as $field) {
             add_settings_field(
-                $field[0],
-                $field[1],
-                [$this, 'render_settings_field'],
-                'zwcachePlugin',
-                'zwcache_pluginPage_section',
-                [
-                    'label_for' => $field[0],
-                    'type' => $field[2],
-                    'default' => $field[3]
-                ]
+                $field[0], $field[1], [$this, 'render_settings_field'],
+                'zwcachePlugin', 'zwcache_pluginPage_section',
+                ['label_for' => $field[0], 'type' => $field[2], 'default' => $field[3]]
             );
         }
     }
@@ -254,26 +249,21 @@ class ZuidWestCacheManager {
      */
     public function render_settings_field($args) {
         $value = isset($this->options[$args['label_for']]) ? $this->options[$args['label_for']] : $args['default'];
-        $checked = ($value) ? 'checked' : '';
-
-        switch ($args['type']) {
-            case 'text':
-            case 'number':
-            case 'password':
-                printf(
-                    '<input type="%1$s" id="%2$s" name="zwcache_settings[%2$s]" value="%3$s" class="regular-text">',
-                    esc_attr($args['type']),
-                    esc_attr($args['label_for']),
-                    esc_attr($value)
-                );
-                break;
-            case 'checkbox':
-                printf(
-                    '<input type="checkbox" id="%1$s" name="zwcache_settings[%1$s]" value="1" %2$s>',
-                    esc_attr($args['label_for']),
-                    $checked
-                );
-                break;
+        $field_id = esc_attr($args['label_for']);
+        
+        $field_types = [
+            'text' => '<input type="text" id="%1$s" name="zwcache_settings[%1$s]" value="%2$s" class="regular-text">',
+            'number' => '<input type="number" id="%1$s" name="zwcache_settings[%1$s]" value="%2$s" class="regular-text">',
+            'password' => '<input type="password" id="%1$s" name="zwcache_settings[%1$s]" value="%2$s" class="regular-text">',
+            'checkbox' => '<input type="checkbox" id="%1$s" name="zwcache_settings[%1$s]" value="1" %2$s>'
+        ];
+        
+        if (isset($field_types[$args['type']])) {
+            printf(
+                $field_types[$args['type']],
+                $field_id,
+                $args['type'] === 'checkbox' ? ($value ? 'checked' : '') : esc_attr($value)
+            );
         }
     }
 
@@ -305,89 +295,125 @@ class ZuidWestCacheManager {
                 ?>
             </form>
             
-            <hr>
-            
-            <h2><?php echo esc_html('Connection Test'); ?></h2>
-            <?php 
-            $zone_id = $this->get_option('zwcache_zone_id');
-            $api_key = $this->get_option('zwcache_api_key');
-            
-            if (empty($zone_id) || empty($api_key)) {
-                echo '<p>' . esc_html('Please enter your Cloudflare Zone ID and API Key in the settings above to test the connection.') . '</p>';
-            } else {
-                ?>
-                <p><?php esc_html_e('Test your Cloudflare API connection:'); ?></p>
-                <form method="post" action="">
-                    <?php wp_nonce_field('zwcache_test_connection', 'zwcache_test_nonce'); ?>
-                    <input type="hidden" name="action" value="test_connection">
-                    <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Test Connection'); ?>">
-                </form>
-                <?php
-            }
-            ?>
-            
-            <hr>
-            
-            <h2><?php echo esc_html('WP-Cron Status'); ?></h2>
             <?php
-            $next_run = wp_next_scheduled(ZWCACHE_CRON_HOOK);
-            if ($next_run) {
-                $time_diff = $next_run - time();
-                if ($time_diff > 0) {
-                    printf(
-                        '<p>' . esc_html('Next scheduled run: %1$s (in %2$d seconds)') . '</p>',
-                        date_i18n('Y-m-d H:i:s', $next_run),
-                        $time_diff
-                    );
-                } else {
-                    echo '<p>' . esc_html('WP-Cron job is scheduled but overdue. This could indicate an issue with WP-Cron.') . '</p>';
-                }
-            } else {
-                echo '<p class="notice notice-error">' . esc_html('WP-Cron job is not scheduled! This is a problem.') . '</p>';
-            }
+            $this->render_section('Connection Test', $this->get_connection_test_content());
+            $this->render_section('WP-Cron Status', $this->get_cron_status_content());
+            $this->render_section('Queue Status', $this->get_queue_status_content());
             ?>
-            
-            <form method="post" action="">
-                <?php wp_nonce_field('zwcache_force_cron', 'zwcache_cron_nonce'); ?>
-                <input type="hidden" name="action" value="force_cron">
-                <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Force Process Queue Now'); ?>">
-            </form>
-            
-            <hr>
-            
-            <h2><?php echo esc_html('Queue Status'); ?></h2>
-            <?php
-            $queued_urls = get_option(ZWCACHE_LOW_PRIORITY_STORE, []);
-            $count = count($queued_urls);
-            ?>
-            <p>
-                <?php printf(
-                    esc_html('URLs currently in queue: %d'),
-                    $count
-                ); ?>
-            </p>
-            
-            <?php if ($count > 0) : ?>
-                <form method="post" action="">
-                    <?php wp_nonce_field('zwcache_clear_queue', 'zwcache_nonce'); ?>
-                    <input type="hidden" name="action" value="clear_queue">
-                    <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Clear Queue'); ?>">
-                </form>
-                
-                <br>
-                <details>
-                    <summary><?php esc_html_e('Show queued URLs'); ?></summary>
-                    <div style="max-height: 200px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #f8f8f8; border: 1px solid #ddd;">
-                        <ol>
-                            <?php foreach ($queued_urls as $url) : ?>
-                                <li><?php echo esc_url($url); ?></li>
-                            <?php endforeach; ?>
-                        </ol>
-                    </div>
-                </details>
-            <?php endif; ?>
         </div>
         <?php
+    }
+
+    /**
+     * Render a section with title and content.
+     *
+     * @param string $title   Section title.
+     * @param string $content Section content HTML.
+     */
+    private function render_section($title, $content) {
+        ?>
+        <hr>
+        <h2><?php echo esc_html($title); ?></h2>
+        <?php echo $content; ?>
+        <?php
+    }
+
+    /**
+     * Get connection test section content.
+     *
+     * @return string HTML content for the connection test section.
+     */
+    private function get_connection_test_content() {
+        ob_start();
+        $zone_id = $this->get_option('zwcache_zone_id');
+        $api_key = $this->get_option('zwcache_api_key');
+        
+        if (empty($zone_id) || empty($api_key)) {
+            echo '<p>' . esc_html('Please enter your Cloudflare Zone ID and API Key in the settings above to test the connection.') . '</p>';
+        } else {
+            ?>
+            <p><?php esc_html_e('Test your Cloudflare API connection:'); ?></p>
+            <form method="post" action="">
+                <?php wp_nonce_field('zwcache_test_connection', 'zwcache_test_nonce'); ?>
+                <input type="hidden" name="action" value="test_connection">
+                <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Test Connection'); ?>">
+            </form>
+            <?php
+        }
+        return ob_get_clean();
+    }
+
+    /**
+     * Get WP-Cron status section content.
+     *
+     * @return string HTML content for the WP-Cron status section.
+     */
+    private function get_cron_status_content() {
+        ob_start();
+        $next_run = wp_next_scheduled(ZWCACHE_CRON_HOOK);
+        
+        if ($next_run) {
+            $time_diff = $next_run - time();
+            if ($time_diff > 0) {
+                printf(
+                    '<p>' . esc_html('Next scheduled run: %1$s (in %2$d seconds)') . '</p>',
+                    date_i18n('Y-m-d H:i:s', $next_run),
+                    $time_diff
+                );
+            } else {
+                echo '<p>' . esc_html('WP-Cron job is scheduled but overdue. This could indicate an issue with WP-Cron.') . '</p>';
+            }
+        } else {
+            echo '<p class="notice notice-error">' . esc_html('WP-Cron job is not scheduled! This is a problem.') . '</p>';
+        }
+        ?>
+        <form method="post" action="">
+            <?php wp_nonce_field('zwcache_force_cron', 'zwcache_cron_nonce'); ?>
+            <input type="hidden" name="action" value="force_cron">
+            <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Force Process Queue Now'); ?>">
+        </form>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Get queue status section content.
+     *
+     * @return string HTML content for the queue status section.
+     */
+    private function get_queue_status_content() {
+        ob_start();
+        $queued_urls = get_option(ZWCACHE_LOW_PRIORITY_STORE, []);
+        $count = count($queued_urls);
+        ?>
+        <p>
+            <?php printf(
+                esc_html('URLs currently in queue: %d'),
+                $count
+            ); ?>
+        </p>
+        
+        <?php if ($count > 0) : ?>
+            <form method="post" action="">
+                <?php wp_nonce_field('zwcache_clear_queue', 'zwcache_nonce'); ?>
+                <input type="hidden" name="action" value="clear_queue">
+                <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Clear Queue'); ?>">
+            </form>
+            
+            <br>
+            <details>
+                <summary><?php esc_html_e('Show queued URLs'); ?></summary>
+                <div style="max-height: 200px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #f8f8f8; border: 1px solid #ddd;">
+                    <ol>
+                        <?php foreach ($queued_urls as $url) : ?>
+                            <li><?php echo esc_url($url); ?></li>
+                        <?php endforeach; ?>
+                    </ol>
+                </div>
+            </details>
+        <?php endif; ?>
+        <?php
+        return ob_get_clean();
     }
 
     /**
@@ -674,142 +700,112 @@ register_deactivation_hook(__FILE__, 'zwcache_deactivate');
  * Handle admin actions (queue clearing, connection testing, and force cron).
  */
 function zwcache_admin_init() {
-    // Handle queue clearing
-    if (isset($_POST['action']) && $_POST['action'] === 'clear_queue' && 
-        isset($_POST['zwcache_nonce']) && wp_verify_nonce($_POST['zwcache_nonce'], 'zwcache_clear_queue')) {
-        
-        delete_option(ZWCACHE_LOW_PRIORITY_STORE);
-        
-        // Redirect to prevent resubmission
-        wp_redirect(add_query_arg(
-            ['page' => 'zwcache_manager', 'message' => 'queue_cleared'],
-            admin_url('options-general.php')
-        ));
-        exit;
+    // Only process on our admin page and when an action is set
+    if (!isset($_POST['action']) || !current_user_can('manage_options')) {
+        return;
     }
+
+    $actions = [
+        'clear_queue' => [
+            'nonce' => 'zwcache_nonce',
+            'nonce_action' => 'zwcache_clear_queue',
+            'callback' => function() {
+                delete_option(ZWCACHE_LOW_PRIORITY_STORE);
+                return ['message' => 'queue_cleared'];
+            }
+        ],
+        'test_connection' => [
+            'nonce' => 'zwcache_test_nonce',
+            'nonce_action' => 'zwcache_test_connection',
+            'callback' => function() {
+                $zwcache = ZuidWestCacheManager::get_instance();
+                $zone_id = $zwcache->get_option('zwcache_zone_id');
+                $api_key = $zwcache->get_option('zwcache_api_key');
+                
+                if (empty($zone_id) || empty($api_key)) {
+                    return ['message' => 'missing_credentials'];
+                }
+                
+                $test_result = $zwcache->test_cloudflare_connection($zone_id, $api_key);
+                return [
+                    'message' => 'connection_' . ($test_result['success'] ? 'success' : 'error'),
+                    'details' => urlencode($test_result['message'])
+                ];
+            }
+        ],
+        'force_cron' => [
+            'nonce' => 'zwcache_cron_nonce',
+            'nonce_action' => 'zwcache_force_cron',
+            'callback' => function() {
+                $zwcache = ZuidWestCacheManager::get_instance();
+                $zwcache->debug_log('Manual execution of queue processing triggered from admin.');
+                $zwcache->process_queued_low_priority_urls();
+                
+                // Re-check cron schedule
+                if (!wp_next_scheduled(ZWCACHE_CRON_HOOK)) {
+                    $scheduled = wp_schedule_event(time(), 'every_minute', ZWCACHE_CRON_HOOK);
+                    $zwcache->debug_log('WP-Cron job was ' . ($scheduled ? 'successfully' : 'unsuccessfully') . ' rescheduled during manual run.');
+                }
+                
+                return ['message' => 'cron_executed'];
+            }
+        ]
+    ];
+
+    $action = $_POST['action'];
     
-    // Handle connection testing
-    if (isset($_POST['action']) && $_POST['action'] === 'test_connection' && 
-        isset($_POST['zwcache_test_nonce']) && wp_verify_nonce($_POST['zwcache_test_nonce'], 'zwcache_test_connection')) {
-        
-        $zwcache = ZuidWestCacheManager::get_instance();
-        $zone_id = $zwcache->get_option('zwcache_zone_id');
-        $api_key = $zwcache->get_option('zwcache_api_key');
-        
-        if (empty($zone_id) || empty($api_key)) {
-            // Redirect with error
-            wp_redirect(add_query_arg(
-                ['page' => 'zwcache_manager', 'message' => 'missing_credentials'],
-                admin_url('options-general.php')
-            ));
+    if (isset($actions[$action])) {
+        $handler = $actions[$action];
+        if (isset($_POST[$handler['nonce']]) && wp_verify_nonce($_POST[$handler['nonce']], $handler['nonce_action'])) {
+            $result = $handler['callback']();
+            $query_args = array_merge(['page' => 'zwcache_manager'], $result);
+            wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
             exit;
-        }
-        
-        $test_result = $zwcache->test_cloudflare_connection($zone_id, $api_key);
-        $result_status = $test_result['success'] ? 'success' : 'error';
-        
-        // Redirect with result
-        wp_redirect(add_query_arg(
-            [
-                'page' => 'zwcache_manager', 
-                'message' => 'connection_' . $result_status,
-                'details' => urlencode($test_result['message'])
-            ],
-            admin_url('options-general.php')
-        ));
-        exit;
-    }
-    
-    // Handle force cron execution
-    if (isset($_POST['action']) && $_POST['action'] === 'force_cron' && 
-        isset($_POST['zwcache_cron_nonce']) && wp_verify_nonce($_POST['zwcache_cron_nonce'], 'zwcache_force_cron')) {
-        
-        // Run the cron function directly
-        $zwcache = ZuidWestCacheManager::get_instance();
-        $zwcache->debug_log('Manual execution of queue processing triggered from admin.');
-        $zwcache->process_queued_low_priority_urls();
-        
-        // Re-check cron schedule and ensure it's set up
-        if (!wp_next_scheduled(ZWCACHE_CRON_HOOK)) {
-            $scheduled = wp_schedule_event(time(), 'every_minute', ZWCACHE_CRON_HOOK);
-            if ($scheduled) {
-                $zwcache->debug_log('WP-Cron job was missing and has been rescheduled during manual run.');
-            } else {
-                $zwcache->debug_log('WP-Cron job was missing and rescheduling FAILED during manual run.');
-            }
-        }
-        
-        // Redirect with result
-        wp_redirect(add_query_arg(
-            ['page' => 'zwcache_manager', 'message' => 'cron_executed'],
-            admin_url('options-general.php')
-        ));
-        exit;
-    }
-    
-    // Add admin notices based on message parameter
-    if (isset($_GET['page']) && $_GET['page'] === 'zwcache_manager' && isset($_GET['message'])) {
-        add_action('admin_notices', function() {
-            $message = sanitize_text_field($_GET['message']);
-            $details = isset($_GET['details']) ? urldecode($_GET['details']) : '';
-            
-            switch ($message) {
-                case 'queue_cleared':
-                    echo '<div class="notice notice-success is-dismissible"><p>' . 
-                        esc_html('Cache queue has been cleared.') . 
-                        '</p></div>';
-                    break;
-                    
-                case 'connection_success':
-                    echo '<div class="notice notice-success is-dismissible"><p>' . 
-                        esc_html('Cloudflare API connection successful!') . 
-                        (!empty($details) ? ' ' . esc_html($details) : '') . 
-                        '</p></div>';
-                    break;
-                    
-                case 'connection_error':
-                    echo '<div class="notice notice-error is-dismissible"><p>' . 
-                        esc_html('Cloudflare API connection failed: ') . 
-                        esc_html($details) . 
-                        '</p></div>';
-                    break;
-                    
-                case 'missing_credentials':
-                    echo '<div class="notice notice-error is-dismissible"><p>' . 
-                        esc_html('Please enter both Zone ID and API Key to test the connection.') . 
-                        '</p></div>';
-                    break;
-                    
-                case 'cron_executed':
-                    echo '<div class="notice notice-success is-dismissible"><p>' . 
-                        esc_html('Queue processing has been manually executed.') . 
-                        '</p></div>';
-                    break;
-            }
-        });
-    }
-    
-    // Check for broken WP-Cron and show persistent warning
-    if (isset($_GET['page']) && $_GET['page'] === 'zwcache_manager') {
-        $next_run = wp_next_scheduled(ZWCACHE_CRON_HOOK);
-        if (!$next_run) {
-            add_action('admin_notices', function() {
-                echo '<div class="notice notice-error"><p><strong>' . 
-                    esc_html('Warning:') . ' </strong>' .
-                    esc_html('The WP-Cron job for cache processing is not scheduled. This will prevent automatic processing of the queue.') . 
-                    '</p></div>';
-            });
         }
     }
 }
 add_action('admin_init', 'zwcache_admin_init');
 
 /**
- * Main function to initialize the plugin.
+ * Display admin notices for the plugin.
  */
-function zwcache_manager_init() {
-    return ZuidWestCacheManager::get_instance();
+function zwcache_admin_notices() {
+    if (!isset($_GET['page']) || $_GET['page'] !== 'zwcache_manager' || !isset($_GET['message'])) {
+        return;
+    }
+
+    $message = sanitize_text_field($_GET['message']);
+    $details = isset($_GET['details']) ? urldecode($_GET['details']) : '';
+    
+    $notices = [
+        'queue_cleared' => ['success', 'Cache queue has been cleared.'],
+        'connection_success' => ['success', 'Cloudflare API connection successful!' . (!empty($details) ? ' ' . $details : '')],
+        'connection_error' => ['error', 'Cloudflare API connection failed: ' . $details],
+        'missing_credentials' => ['error', 'Please enter both Zone ID and API Key to test the connection.'],
+        'cron_executed' => ['success', 'Queue processing has been manually executed.']
+    ];
+    
+    if (isset($notices[$message])) {
+        list($type, $text) = $notices[$message];
+        printf(
+            '<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
+            esc_attr($type),
+            esc_html($text)
+        );
+    }
+    
+    // Check for broken WP-Cron
+    if (isset($_GET['page']) && $_GET['page'] === 'zwcache_manager') {
+        $next_run = wp_next_scheduled(ZWCACHE_CRON_HOOK);
+        if (!$next_run) {
+            echo '<div class="notice notice-error"><p><strong>' . 
+                esc_html('Warning:') . ' </strong>' .
+                esc_html('The WP-Cron job for cache processing is not scheduled. This will prevent automatic processing of the queue.') . 
+                '</p></div>';
+        }
+    }
 }
+add_action('admin_notices', 'zwcache_admin_notices');
 
 /**
  * Ensure cron job is scheduled on plugin initialization
@@ -828,6 +824,13 @@ function zwcache_ensure_cron_scheduled() {
             }
         }
     }
+}
+
+/**
+ * Main function to initialize the plugin.
+ */
+function zwcache_manager_init() {
+    return ZuidWestCacheManager::get_instance();
 }
 
 // Initialize the plugin
