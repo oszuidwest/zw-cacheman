@@ -27,7 +27,7 @@
     <!-- WordPress -->
     <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
         <properties>
-            <property name="prefixes" type="array" value="zwcache_,ZWCACHE_"/>
+            <property name="prefixes" type="array" value="zw_cacheman_,ZW_CACHEMAN_"/>
         </properties>
     </rule>
     <rule ref="Generic.CodeAnalysis.EmptyPHPStatement"/>
