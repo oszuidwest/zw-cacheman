@@ -1,5 +1,5 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
+if (! defined('ABSPATH')) {
     exit;
 }
 
@@ -10,8 +10,8 @@ namespace ZW_CACHEMAN_Core;
  *
  * Handles queuing of URLs for low-priority processing.
  */
-class CacheManager_Queue {
-
+class CacheManager_Queue
+{
     /**
      * Singleton instance.
      *
@@ -24,8 +24,9 @@ class CacheManager_Queue {
      *
      * @return CacheManager_Queue
      */
-    public static function get_instance() {
-        if ( null === self::$instance ) {
+    public static function get_instance()
+    {
+        if (null === self::$instance) {
             self::$instance = new self();
         }
         return self::$instance;
@@ -36,9 +37,10 @@ class CacheManager_Queue {
      *
      * @param array $urls URLs to queue.
      */
-    public function queue_low_priority_urls( $urls ) {
-        $existing_urls = get_option( ZW_CACHEMAN_LOW_PRIORITY_STORE, [] );
-        $all_urls = array_unique( array_merge( $existing_urls, $urls ) );
-        update_option( ZW_CACHEMAN_LOW_PRIORITY_STORE, $all_urls );
+    public function queue_low_priority_urls($urls)
+    {
+        $existing_urls = get_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, []);
+        $all_urls = array_unique(array_merge($existing_urls, $urls));
+        update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $all_urls);
     }
 }

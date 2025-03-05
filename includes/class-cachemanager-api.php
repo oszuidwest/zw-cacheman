@@ -1,5 +1,5 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
+if (! defined('ABSPATH')) {
     exit;
 }
 
@@ -10,8 +10,8 @@ namespace ZW_CACHEMAN_Core;
  *
  * Handles communication with the Cloudflare API.
  */
-class CacheManager_API {
-
+class CacheManager_API
+{
     /**
      * Singleton instance.
      *
@@ -24,8 +24,9 @@ class CacheManager_API {
      *
      * @return CacheManager_API
      */
-    public static function get_instance() {
-        if ( null === self::$instance ) {
+    public static function get_instance()
+    {
+        if (null === self::$instance) {
             self::$instance = new self();
         }
         return self::$instance;
@@ -37,14 +38,15 @@ class CacheManager_API {
      * @param array $urls URLs to purge.
      * @return bool True on success, false on failure.
      */
-    public function purge_urls( $urls ) {
-        if ( empty( $urls ) ) {
+    public function purge_urls($urls)
+    {
+        if (empty($urls)) {
             return true;
         }
 
-        $zone_id = get_option( 'zw_cacheman_zone_id' );
-        $api_key = get_option( 'zw_cacheman_api_key' );
-        if ( empty( $zone_id ) || empty( $api_key ) ) {
+        $zone_id = get_option('zw_cacheman_zone_id');
+        $api_key = get_option('zw_cacheman_api_key');
+        if (empty($zone_id) || empty($api_key)) {
             return false;
         }
 
@@ -57,19 +59,19 @@ class CacheManager_API {
                     'Authorization' => 'Bearer ' . $api_key,
                     'Content-Type'  => 'application/json',
                 ],
-                'body' => wp_json_encode( [ 'files' => $urls ] ),
+                'body' => wp_json_encode([ 'files' => $urls ]),
             ]
         );
 
-        if ( is_wp_error( $response ) ) {
+        if (is_wp_error($response)) {
             return false;
         }
 
-        $response_code = wp_remote_retrieve_response_code( $response );
-        $body = wp_remote_retrieve_body( $response );
-        $body_json = json_decode( $body, true );
+        $response_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $body_json = json_decode($body, true);
 
-        if ( 200 === $response_code && isset( $body_json['success'] ) && true === $body_json['success'] ) {
+        if (200 === $response_code && isset($body_json['success']) && true === $body_json['success']) {
             return true;
         } else {
             return false;
@@ -83,7 +85,8 @@ class CacheManager_API {
      * @param string $api_key The Cloudflare API Key.
      * @return array Array containing 'success' and 'message'.
      */
-    public function test_cloudflare_connection( $zone_id, $api_key ) {
+    public function test_cloudflare_connection($zone_id, $api_key)
+    {
         $api_endpoint = 'https://api.cloudflare.com/client/v4/zones/' . $zone_id;
         $response = wp_remote_get(
             $api_endpoint,
@@ -95,25 +98,25 @@ class CacheManager_API {
                 ],
             ]
         );
-        if ( is_wp_error( $response ) ) {
+        if (is_wp_error($response)) {
             return [
                 'success' => false,
                 'message' => $response->get_error_message(),
             ];
         }
 
-        $response_code = wp_remote_retrieve_response_code( $response );
-        $body = wp_remote_retrieve_body( $response );
-        $body_json = json_decode( $body, true );
+        $response_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $body_json = json_decode($body, true);
 
-        if ( 200 === $response_code && isset( $body_json['success'] ) && true === $body_json['success'] ) {
-            $zone_name = isset( $body_json['result']['name'] ) ? $body_json['result']['name'] : 'unknown';
+        if (200 === $response_code && isset($body_json['success']) && true === $body_json['success']) {
+            $zone_name = isset($body_json['result']['name']) ? $body_json['result']['name'] : 'unknown';
             return [
                 'success' => true,
-                'message' => sprintf( 'Connected to zone: %s', $zone_name ),
+                'message' => sprintf('Connected to zone: %s', $zone_name),
             ];
         } else {
-            $error_message = isset( $body_json['errors'][0]['message'] ) ? $body_json['errors'][0]['message'] : sprintf( 'Unknown error (HTTP code: %d)', $response_code );
+            $error_message = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : sprintf('Unknown error (HTTP code: %d)', $response_code);
             return [
                 'success' => false,
                 'message' => $error_message,
