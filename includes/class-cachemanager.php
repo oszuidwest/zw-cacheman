@@ -32,7 +32,7 @@ class CacheManager
     /**
      * Instance of the API handler.
      *
-     * @var CacheManagerAPI
+     * @var CacheManagerApi
      */
     private $api;
 
