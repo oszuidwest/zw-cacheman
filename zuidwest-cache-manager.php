@@ -38,7 +38,7 @@ function zw_cacheman_init()
 {
     \ZW_CACHEMAN_Core\CacheManager::get_instance();
     if (is_admin()) {
-        new \ZW_CACHEMAN_Core\CacheManager_Admin();
+        new \ZW_CACHEMAN_Core\CacheManagerAdmin();
     }
 }
 add_action('plugins_loaded', 'zw_cacheman_init');
