@@ -136,7 +136,7 @@ class CacheManager
             return;
         }
 
-        $this->debug_log("Post status changed from $old_status to $new_status for post ID {$post->ID}.");
+        $this->debug_log('Post status changed from ' . $old_status . ' to ' . $new_status . ' for post ID ' . $post->ID . '.');
 
         if ('publish' === $new_status || 'publish' === $old_status) {
             // Get primary web URLs.
