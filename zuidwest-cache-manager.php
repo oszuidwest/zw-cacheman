@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: ZuidWest Cache Manager
- * Description: Purges Cloudflare cache for high-priority URLs immediately on post publishing and edits. Also queues associated taxonomy URLs for low-priority batch processing via WP-Cron.
- * Version: 0.5
+ * Description: Purges Cloudflare cache for high-priority URLs immediately when posts are published or edited. It also queues related taxonomy URLs for low-priority batch processing via WP-Cron.
+ * Version: 0.6
  * Author: Streekomroep ZuidWest
  * License: GPLv3
  */
@@ -11,7 +11,7 @@ namespace ZW_CACHEMAN_Core;
 
 use WP_Post;
 
-// If this file is called directly, abort.
+// Abort execution if this file is accessed directly.
 if (! defined('WPINC')) {
     exit;
 }
@@ -25,45 +25,47 @@ define('ZW_CACHEMAN_TEXT_DOMAIN', 'zw-cacheman');
 
 /**
  * Class CacheManager
+ *
+ * Handles Cloudflare cache purging and WP-Cron based low-priority URL processing.
  */
 class CacheManager
 {
     /**
-     * Instance of this class.
+     * Instance of the CacheManager class.
      *
      * @var CacheManager
      */
     protected static $instance = null;
 
     /**
-     * Plugin options.
+     * Plugin settings options.
      *
      * @var array
      */
     protected $options;
 
     /**
-     * Initialize the plugin.
+     * Constructor. Initializes plugin settings and hooks.
      */
     private function __construct()
     {
         $this->options = get_option('zw_cacheman_settings', []);
 
-        // Admin hooks.
-        add_action('admin_menu', [$this, 'add_admin_menu']);
-        add_action('admin_init', [$this, 'settings_init']);
-        add_filter('plugin_action_links_' . plugin_basename(__FILE__), [$this, 'add_settings_link']);
+        // Add hooks for admin menu and settings initialization.
+        add_action('admin_menu', [ $this, 'add_admin_menu' ]);
+        add_action('admin_init', [ $this, 'settings_init' ]);
+        add_filter('plugin_action_links_' . plugin_basename(__FILE__), [ $this, 'add_settings_link' ]);
 
-        // Post status transition hook.
-        add_action('transition_post_status', [$this, 'handle_post_status_change'], 10, 3);
+        // Hook into post status transitions to purge or queue URLs.
+        add_action('transition_post_status', [ $this, 'handle_post_status_change' ], 10, 3);
 
-        // Cron hooks.
-        add_filter('cron_schedules', [$this, 'add_cron_interval']);
-        add_action(ZW_CACHEMAN_CRON_HOOK, [$this, 'process_queued_low_priority_urls']);
+        // Add WP-Cron schedule and cron job hook.
+        add_filter('cron_schedules', [ $this, 'add_cron_interval' ]);
+        add_action(ZW_CACHEMAN_CRON_HOOK, [ $this, 'process_queued_low_priority_urls' ]);
     }
 
     /**
-     * Return an instance of this class.
+     * Returns a single instance of the CacheManager class.
      *
      * @return CacheManager A single instance of this class.
      */
@@ -76,7 +78,7 @@ class CacheManager
     }
 
     /**
-     * Adds settings link to the plugins page.
+     * Adds a settings link to the plugin's entry on the plugins page.
      *
      * @param array $links Plugin action links.
      * @return array Modified plugin action links.
@@ -89,7 +91,7 @@ class CacheManager
     }
 
     /**
-     * Register the administration menu for this plugin.
+     * Registers the plugin options page in the admin menu.
      */
     public function add_admin_menu()
     {
@@ -98,12 +100,12 @@ class CacheManager
             esc_html__('ZuidWest Cache', 'zw-cacheman'),
             'manage_options',
             'zw_cacheman_plugin',
-            [$this, 'render_options_page']
+            [ $this, 'render_options_page' ]
         );
     }
 
     /**
-     * Initialize settings for the admin page.
+     * Initializes the settings for the admin options page.
      */
     public function settings_init()
     {
@@ -120,16 +122,16 @@ class CacheManager
         add_settings_section(
             'zw_cacheman_plugin_section',
             esc_html__('Cloudflare API Settings', 'zw-cacheman'),
-            [$this, 'settings_section_callback'],
+            [ $this, 'settings_section_callback' ],
             'zw_cacheman_plugin'
         );
 
-        // Define fields with a compact array structure.
+        // Define the fields using a compact array.
         $fields = [
-            ['zw_cacheman_zone_id', 'Zone ID', 'text', ''],
-            ['zw_cacheman_api_key', 'API Key', 'password', ''],
-            ['zw_cacheman_batch_size', 'Batch Size', 'number', 30],
-            ['zw_cacheman_debug_mode', 'Debug Mode', 'checkbox', 0],
+            [ 'zw_cacheman_zone_id', 'Zone ID', 'text', '' ],
+            [ 'zw_cacheman_api_key', 'API Key', 'password', '' ],
+            [ 'zw_cacheman_batch_size', 'Batch Size', 'number', 30 ],
+            [ 'zw_cacheman_debug_mode', 'Debug Mode', 'checkbox', 0 ],
         ];
 
         // Register all fields in a loop.
@@ -137,16 +139,16 @@ class CacheManager
             add_settings_field(
                 $field[0],
                 $field[1],
-                [$this, 'render_settings_field'],
+                [ $this, 'render_settings_field' ],
                 'zw_cacheman_plugin',
                 'zw_cacheman_plugin_section',
-                ['label_for' => $field[0], 'type' => $field[2], 'default' => $field[3]]
+                [ 'label_for' => $field[0], 'type' => $field[2], 'default' => $field[3] ]
             );
         }
     }
 
     /**
-     * Sanitize the settings input.
+     * Sanitizes the settings input.
      *
      * @param array $input The settings input.
      * @return array The sanitized settings.
@@ -180,11 +182,11 @@ class CacheManager
         $sanitized_input['zw_cacheman_debug_mode'] = isset($input['zw_cacheman_debug_mode']) ? 1 : 0;
 
         // Check if API credentials have changed.
-        $api_changed = (!isset($old_settings['zw_cacheman_zone_id']) || $sanitized_input['zw_cacheman_zone_id'] !== $old_settings['zw_cacheman_zone_id']) ||
-            (!isset($old_settings['zw_cacheman_api_key']) || $sanitized_input['zw_cacheman_api_key'] !== $old_settings['zw_cacheman_api_key']);
+        $api_changed = ( ! isset($old_settings['zw_cacheman_zone_id']) || $sanitized_input['zw_cacheman_zone_id'] !== $old_settings['zw_cacheman_zone_id'] ) ||
+            ( ! isset($old_settings['zw_cacheman_api_key']) || $sanitized_input['zw_cacheman_api_key'] !== $old_settings['zw_cacheman_api_key'] );
 
-        // Test API connection if credentials are set and have changed.
-        if ($api_changed && !empty($sanitized_input['zw_cacheman_zone_id']) && !empty($sanitized_input['zw_cacheman_api_key'])) {
+        // Test the API connection if the credentials are set and have been changed.
+        if ($api_changed && ! empty($sanitized_input['zw_cacheman_zone_id']) && ! empty($sanitized_input['zw_cacheman_api_key'])) {
             $test_result = $this->test_cloudflare_connection($sanitized_input['zw_cacheman_zone_id'], $sanitized_input['zw_cacheman_api_key']);
 
             if ($test_result['success']) {
@@ -195,7 +197,7 @@ class CacheManager
                     'success'
                 );
             } else {
-                // translators: %s is the error message returned from Cloudflare API.
+                // translators: %s is the error message returned from the Cloudflare API.
                 $api_error_message = esc_html__('Cloudflare API connection failed: %s', 'zw-cacheman');
                 add_settings_error(
                     'zw_cacheman_settings',
@@ -210,11 +212,11 @@ class CacheManager
     }
 
     /**
-     * Test connection to Cloudflare API.
+     * Tests the connection to the Cloudflare API.
      *
      * @param string $zone_id The Cloudflare Zone ID.
      * @param string $api_key The Cloudflare API Key.
-     * @return array Result with success status and message.
+     * @return array Result array containing a 'success' status and a message.
      */
     public function test_cloudflare_connection($zone_id, $api_key)
     {
@@ -244,7 +246,7 @@ class CacheManager
 
         if (200 === $response_code && isset($body_json['success']) && true === $body_json['success']) {
             $zone_name = isset($body_json['result']['name']) ? $body_json['result']['name'] : 'unknown';
-            $this->debug_log('API Connection test successful. Connected to zone: ' . $zone_name);
+            $this->debug_log('API connection test successful. Connected to zone: ' . $zone_name);
 
             return [
                 'success' => true,
@@ -255,7 +257,7 @@ class CacheManager
                 ? $body_json['errors'][0]['message']
                 : sprintf('Unknown error (HTTP code: %d)', $response_code);
 
-            $this->debug_log('API Connection test failed: ' . $error_message);
+            $this->debug_log('API connection test failed: ' . $error_message);
 
             return [
                 'success' => false,
@@ -265,13 +267,13 @@ class CacheManager
     }
 
     /**
-     * Render a settings field.
+     * Renders a settings field on the admin options page.
      *
      * @param array $args Field arguments.
      */
     public function render_settings_field($args)
     {
-        $value    = isset($this->options[$args['label_for']]) ? $this->options[$args['label_for']] : $args['default'];
+        $value    = isset($this->options[ $args['label_for'] ]) ? $this->options[ $args['label_for'] ] : $args['default'];
         $field_id = esc_attr($args['label_for']);
 
         $field_types = [
@@ -281,17 +283,17 @@ class CacheManager
             'checkbox' => '<input type="checkbox" id="%1$s" name="zw_cacheman_settings[%1$s]" value="1" %2$s>',
         ];
 
-        if (isset($field_types[$args['type']])) {
+        if (isset($field_types[ $args['type'] ])) {
             printf(
-                $field_types[$args['type']],
+                $field_types[ $args['type'] ],
                 $field_id,
-                $args['type'] === 'checkbox' ? ($value ? 'checked' : '') : esc_attr($value)
+                $args['type'] === 'checkbox' ? ( $value ? 'checked' : '' ) : esc_attr($value)
             );
         }
     }
 
     /**
-     * Callback for the settings section.
+     * Callback function to display information for the settings section.
      */
     public function settings_section_callback()
     {
@@ -299,11 +301,11 @@ class CacheManager
     }
 
     /**
-     * Render the options page.
+     * Renders the plugin options page.
      */
     public function render_options_page()
     {
-        if (!current_user_can('manage_options')) {
+        if (! current_user_can('manage_options')) {
             return;
         }
         ?>
@@ -330,11 +332,11 @@ class CacheManager
     }
 
     /**
-     * Render a section with title and content.
+     * Renders a section with a title and content.
      *
-     * @param string $title   Section title.
-     * @param string $content Section content HTML.
-     * @return string The rendered section.
+     * @param string $title   The title of the section.
+     * @param string $content The HTML content of the section.
+     * @return string The rendered HTML section.
      */
     private function render_section($title, $content)
     {
@@ -348,9 +350,9 @@ class CacheManager
     }
 
     /**
-     * Get connection test section content.
+     * Retrieves HTML content for the connection test section.
      *
-     * @return string HTML content for the connection test section.
+     * @return string HTML content for testing the Cloudflare API connection.
      */
     private function get_connection_test_content()
     {
@@ -374,9 +376,9 @@ class CacheManager
     }
 
     /**
-     * Get WP-Cron status section content.
+     * Retrieves HTML content for the WP-Cron status section.
      *
-     * @return string HTML content for the WP-Cron status section.
+     * @return string HTML content showing the WP-Cron schedule status.
      */
     private function get_cron_status_content()
     {
@@ -402,9 +404,9 @@ class CacheManager
     }
 
     /**
-     * Get queue status section content.
+     * Retrieves HTML content for the queue status section.
      *
-     * @return string HTML content for the queue status section.
+     * @return string HTML content showing the status of the queued URLs.
      */
     private function get_queue_status_content()
     {
@@ -414,7 +416,7 @@ class CacheManager
         ?>
         <p>
             <?php
-            // translators: %d is the number of URLs in the queue.
+            // translators: %d is the number of URLs currently in the queue.
             $queue_text = esc_html__('URLs currently in queue: %d', 'zw-cacheman');
             printf($queue_text, $count);
             ?>
@@ -444,21 +446,21 @@ class CacheManager
     }
 
     /**
-     * Get a plugin option.
+     * Retrieves a specific plugin option.
      *
-     * @param string $option_name Option name.
-     * @param mixed  $default     Default value.
-     * @return mixed Option value.
+     * @param string $option_name The name of the option.
+     * @param mixed  $default     The default value if the option is not set.
+     * @return mixed The option value.
      */
     public function get_option($option_name, $default = false)
     {
-        return isset($this->options[$option_name]) ? $this->options[$option_name] : $default;
+        return isset($this->options[ $option_name ]) ? $this->options[ $option_name ] : $default;
     }
 
     /**
-     * Log a debug message.
+     * Logs a debug message if debug mode is enabled.
      *
-     * @param string $message The message to log.
+     * @param string $message The debug message.
      */
     public function debug_log($message)
     {
@@ -468,14 +470,14 @@ class CacheManager
     }
 
     /**
-     * Add custom cron interval.
+     * Adds a custom cron interval for scheduling tasks.
      *
-     * @param array $schedules The existing schedules.
-     * @return array The modified schedules.
+     * @param array $schedules The existing cron schedules.
+     * @return array The modified cron schedules including a one-minute interval.
      */
     public function add_cron_interval($schedules)
     {
-        if (!isset($schedules['every_minute'])) {
+        if (! isset($schedules['every_minute'])) {
             $schedules['every_minute'] = [
                 'interval' => 60,
                 'display'  => esc_html__('Every minute', 'zw-cacheman'),
@@ -485,14 +487,15 @@ class CacheManager
     }
 
     /**
-     * Handle the transition of a post's status and purge or queue URLs as necessary.
+     * Handles post status transitions and purges or queues URLs as needed.
      *
-     * @param string  $new_status New status of the post.
-     * @param string  $old_status Old status of the post.
-     * @param WP_Post $post       Post object.
+     * @param string  $new_status The new status of the post.
+     * @param string  $old_status The previous status of the post.
+     * @param WP_Post $post       The post object.
      */
     public function handle_post_status_change($new_status, $old_status, $post)
     {
+        // Skip autosaves and revisions.
         if (wp_is_post_autosave($post) || wp_is_post_revision($post)) {
             return;
         }
@@ -500,54 +503,69 @@ class CacheManager
         $this->debug_log('Post status changed from ' . $old_status . ' to ' . $new_status . ' for post ID ' . $post->ID . '.');
 
         if ('publish' === $new_status || 'publish' === $old_status) {
+            // Define high-priority URLs.
             $high_priority_urls = [
                 get_permalink($post->ID),
                 get_home_url(),
-                get_home_url() . '/feed/',
+                trailingslashit(get_home_url()) . 'feed/',
                 get_post_type_archive_link($post->post_type),
             ];
 
             $high_priority_urls = array_filter($high_priority_urls);
             $high_priority_urls = array_unique($high_priority_urls);
-            $this->purge_urls($high_priority_urls);
 
+            // Add REST API endpoints using native functions.
+            $rest_api_urls = $this->get_rest_endpoints_for_post($post);
+
+            // Combine regular URLs with REST API URLs.
+            $all_high_priority_urls = array_merge($high_priority_urls, $rest_api_urls);
+            $all_high_priority_urls = array_filter($all_high_priority_urls);
+            $all_high_priority_urls = array_unique($all_high_priority_urls);
+
+            // Purge all combined endpoints.
+            $this->purge_urls($all_high_priority_urls);
+
+            // Retrieve associated taxonomy URLs and queue them for low-priority processing.
             $taxonomy_urls = $this->get_associated_taxonomy_urls($post->ID);
-            if (!empty($taxonomy_urls)) {
+            if (! empty($taxonomy_urls)) {
                 $this->queue_low_priority_urls($taxonomy_urls);
             }
         }
     }
 
     /**
-     * Queue URLs for low-priority batch processing.
+     * Retrieves REST API endpoints associated with a given post using native WordPress functions.
      *
-     * @param array $urls URLs to be queued.
+     * @param WP_Post $post The post object.
+     * @return array List of REST API endpoints.
      */
-    public function queue_low_priority_urls($urls)
+    private function get_rest_endpoints_for_post($post)
     {
-        if (empty($urls)) {
-            return;
+        $endpoints = [];
+
+        // Add the main REST API endpoint.
+        $endpoints[] = rest_url();
+
+        $post_type_object = get_post_type_object($post->post_type);
+        if ($post_type_object) {
+            // Use the registered rest_base if available.
+            $rest_base = ! empty($post_type_object->rest_base) ? $post_type_object->rest_base : $post->post_type;
+            // Endpoint for the collection (e.g., wp/v2/posts).
+            $endpoints[] = rest_url('wp/v2/' . $rest_base);
+            // Endpoint for the specific post object (e.g., wp/v2/posts/123).
+            $endpoints[] = rest_url('wp/v2/' . $rest_base . '/' . $post->ID);
         }
 
-        $queued_urls = get_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, []);
-
-        $new_urls = array_filter(
-            $urls,
-            function ($url) use ($queued_urls) {
-                return !in_array($url, $queued_urls, true);
-            }
-        );
-
-        if (!empty($new_urls)) {
-            $combined_urls = array_merge($queued_urls, $new_urls);
-            $combined_urls = array_slice($combined_urls, 0, 1000);
-            update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $combined_urls);
-            $this->debug_log('Queued ' . count($new_urls) . ' new URLs for low-priority purging.');
+        // If the post type supports authors, add the author endpoint.
+        if (post_type_supports($post->post_type, 'author')) {
+            $endpoints[] = rest_url('wp/v2/users/' . $post->post_author);
         }
+
+        return array_unique($endpoints);
     }
 
     /**
-     * Process queued URLs in batches for low-priority purging.
+     * Processes queued URLs in batches for low-priority cache purging.
      */
     public function process_queued_low_priority_urls()
     {
@@ -556,21 +574,21 @@ class CacheManager
 
         $queued_urls = get_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, []);
         if (empty($queued_urls)) {
-            $this->debug_log('No URLs in queue to process.');
+            $this->debug_log('No URLs in the queue to process.');
             return;
         }
 
         $batch_size = $this->get_option('zw_cacheman_batch_size', 30);
         $batch      = array_slice($queued_urls, 0, $batch_size);
-        $this->debug_log('About to process batch of ' . count($batch) . ' URLs from a total of ' . count($queued_urls) . ' in queue.');
+        $this->debug_log('About to process a batch of ' . count($batch) . ' URLs from a total of ' . count($queued_urls) . ' queued URLs.');
 
         $purge_result = $this->purge_urls($batch);
         if ($purge_result) {
             $queued_urls = array_diff($queued_urls, $batch);
             update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $queued_urls);
-            $this->debug_log('Successfully processed and removed ' . count($batch) . ' URLs from queue. ' . count($queued_urls) . ' URLs remaining.');
+            $this->debug_log('Successfully processed and removed ' . count($batch) . ' URLs from the queue. ' . count($queued_urls) . ' URLs remaining.');
         } else {
-            $this->debug_log('Failed to process ' . count($batch) . ' URLs. Will retry in next run.');
+            $this->debug_log('Failed to process ' . count($batch) . ' URLs. They will be retried in the next run.');
         }
 
         $end_time       = microtime(true);
@@ -583,10 +601,10 @@ class CacheManager
     }
 
     /**
-     * Retrieve URLs for all taxonomies associated with a given post.
+     * Retrieves URLs for all taxonomies associated with a given post.
      *
-     * @param int $post_id ID of the post.
-     * @return array URLs associated with the post's taxonomies.
+     * @param int $post_id The ID of the post.
+     * @return array List of URLs associated with the post's taxonomies.
      */
     public function get_associated_taxonomy_urls($post_id)
     {
@@ -601,20 +619,20 @@ class CacheManager
 
         foreach ($taxonomies as $taxonomy) {
             $terms = get_the_terms($post_id, $taxonomy);
-            if ($terms && !is_wp_error($terms)) {
+            if ($terms && ! is_wp_error($terms)) {
                 foreach ($terms as $term) {
                     $term_link = get_term_link($term, $taxonomy);
-                    if (!is_wp_error($term_link)) {
+                    if (! is_wp_error($term_link)) {
                         $urls[] = $term_link;
                     }
                 }
             }
         }
 
-        // Only add the author URL if the post type supports authors.
+        // If the post type supports authors, add the author URL.
         if (post_type_supports($post_type, 'author')) {
             $post       = get_post($post_id);
-            $author_url = get_author_posts_url((int)$post->post_author);
+            $author_url = get_author_posts_url((int) $post->post_author);
             if ($author_url) {
                 $urls[] = $author_url;
             }
@@ -625,10 +643,10 @@ class CacheManager
     }
 
     /**
-     * Purge the specified URLs through the Cloudflare API.
+     * Purges the specified URLs through the Cloudflare API.
      *
      * @param array $urls URLs to be purged.
-     * @return bool True if purge was successful, false otherwise.
+     * @return bool True if the purge was successful, false otherwise.
      */
     public function purge_urls($urls)
     {
@@ -636,7 +654,7 @@ class CacheManager
             return true;
         }
 
-        $this->debug_log('Attempting to purge URLs: ' . implode(', ', $urls));
+        $this->debug_log('Attempting to purge the following URLs: ' . implode(', ', $urls));
         $zone_id = $this->get_option('zw_cacheman_zone_id');
         $api_key = $this->get_option('zw_cacheman_api_key');
 
@@ -646,7 +664,7 @@ class CacheManager
         }
 
         $api_endpoint = 'https://api.cloudflare.com/client/v4/zones/' . $zone_id . '/purge_cache';
-        $response = wp_remote_post(
+        $response     = wp_remote_post(
             $api_endpoint,
             [
                 'timeout' => 30,
@@ -654,7 +672,7 @@ class CacheManager
                     'Authorization' => 'Bearer ' . $api_key,
                     'Content-Type'  => 'application/json',
                 ],
-                'body' => wp_json_encode(['files' => $urls]),
+                'body' => wp_json_encode([ 'files' => $urls ]),
             ]
         );
 
@@ -672,9 +690,23 @@ class CacheManager
             return true;
         } else {
             $error_message = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error';
-            $this->debug_log('Cache purge failed with code ' . $response_code . ': ' . $error_message);
+            $this->debug_log('Cache purge failed with HTTP code ' . $response_code . ': ' . $error_message);
             return false;
         }
+    }
+
+    /**
+     * Queues the specified URLs for low-priority processing.
+     *
+     * @param array $urls URLs to be queued.
+     */
+    public function queue_low_priority_urls($urls)
+    {
+        $existing_urls = get_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, []);
+        $all_urls      = array_merge($existing_urls, $urls);
+        $all_urls      = array_unique($all_urls);
+        update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $all_urls);
+        $this->debug_log('Queued ' . count($urls) . ' low-priority URLs for later processing.');
     }
 }
 
@@ -690,7 +722,7 @@ function zw_cacheman_sanitize_settings($input)
 }
 
 /**
- * Handle plugin activation.
+ * Handles plugin activation tasks.
  */
 function zw_cacheman_activate()
 {
@@ -708,7 +740,7 @@ function zw_cacheman_activate()
 register_activation_hook(__FILE__, __NAMESPACE__ . '\zw_cacheman_activate');
 
 /**
- * Handle plugin deactivation.
+ * Handles plugin deactivation tasks.
  */
 function zw_cacheman_deactivate()
 {
@@ -721,11 +753,11 @@ function zw_cacheman_deactivate()
 register_deactivation_hook(__FILE__, __NAMESPACE__ . '\zw_cacheman_deactivate');
 
 /**
- * Handle admin actions (queue clearing, connection testing, and force cron).
+ * Handles various admin actions including clearing the queue, testing the API connection, and forcing cron execution.
  */
 function zw_cacheman_admin_init()
 {
-    if (!isset($_POST['action']) || !current_user_can('manage_options')) {
+    if (! isset($_POST['action']) || ! current_user_can('manage_options')) {
         return;
     }
 
@@ -736,7 +768,7 @@ function zw_cacheman_admin_init()
             'nonce_action' => 'zw_cacheman_clear_queue',
             'callback'     => function () {
                 delete_option(ZW_CACHEMAN_LOW_PRIORITY_STORE);
-                return ['message' => 'queue_cleared'];
+                return [ 'message' => 'queue_cleared' ];
             },
         ],
         'test_connection' => [
@@ -747,11 +779,11 @@ function zw_cacheman_admin_init()
                 $zone_id  = $cacheman->get_option('zw_cacheman_zone_id');
                 $api_key  = $cacheman->get_option('zw_cacheman_api_key');
                 if (empty($zone_id) || empty($api_key)) {
-                    return ['message' => 'missing_credentials'];
+                    return [ 'message' => 'missing_credentials' ];
                 }
                 $test_result = $cacheman->test_cloudflare_connection($zone_id, $api_key);
                 return [
-                    'message' => 'connection_' . ($test_result['success'] ? 'success' : 'error'),
+                    'message' => 'connection_' . ( $test_result['success'] ? 'success' : 'error' ),
                     'details' => urlencode($test_result['message']),
                 ];
             },
@@ -763,20 +795,20 @@ function zw_cacheman_admin_init()
                 $cacheman = CacheManager::get_instance();
                 $cacheman->debug_log('Manual execution of queue processing triggered from admin.');
                 $cacheman->process_queued_low_priority_urls();
-                if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
+                if (! wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
                     $scheduled = wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
-                    $cacheman->debug_log('WP-Cron job was ' . ($scheduled ? 'successfully' : 'unsuccessfully') . ' rescheduled during manual run.');
+                    $cacheman->debug_log('WP-Cron job was ' . ( $scheduled ? 'successfully' : 'unsuccessfully' ) . ' rescheduled during manual run.');
                 }
-                return ['message' => 'cron_executed'];
+                return [ 'message' => 'cron_executed' ];
             },
         ],
     ];
 
-    if (isset($actions[$action])) {
-        $handler = $actions[$action];
-        if (isset($_POST[$handler['nonce']]) && wp_verify_nonce(sanitize_key(wp_unslash($_POST[$handler['nonce']])), $handler['nonce_action'])) {
+    if (isset($actions[ $action ])) {
+        $handler = $actions[ $action ];
+        if (isset($_POST[ $handler['nonce'] ]) && wp_verify_nonce(sanitize_key(wp_unslash($_POST[ $handler['nonce'] ])), $handler['nonce_action'])) {
             $result     = $handler['callback']();
-            $query_args = array_merge(['page' => 'zw_cacheman_plugin'], $result);
+            $query_args = array_merge([ 'page' => 'zw_cacheman_plugin' ], $result);
             wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
             exit;
         }
@@ -785,11 +817,11 @@ function zw_cacheman_admin_init()
 add_action('admin_init', __NAMESPACE__ . '\zw_cacheman_admin_init');
 
 /**
- * Display admin notices for the plugin.
+ * Displays admin notices based on plugin actions.
  */
 function zw_cacheman_admin_notices()
 {
-    if (!isset($_GET['page']) || 'zw_cacheman_plugin' !== $_GET['page'] || !isset($_GET['message'])) {
+    if (! isset($_GET['page']) || 'zw_cacheman_plugin' !== $_GET['page'] || ! isset($_GET['message'])) {
         return;
     }
 
@@ -805,15 +837,15 @@ function zw_cacheman_admin_notices()
     }
 
     $notices = [
-        'queue_cleared'       => ['success', __('Cache queue has been cleared.', 'zw-cacheman')],
-        'connection_success'  => ['success', __('Cloudflare API connection successful!', 'zw-cacheman') . (!empty($details) ? ' ' . $details : '')],
-        'connection_error'    => ['error', __('Cloudflare API connection failed: ', 'zw-cacheman') . $details],
-        'missing_credentials' => ['error', __('Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman')],
-        'cron_executed'       => ['success', __('Queue processing has been manually executed.', 'zw-cacheman')],
+        'queue_cleared'       => [ 'success', __('Cache queue has been cleared.', 'zw-cacheman') ],
+        'connection_success'  => [ 'success', __('Cloudflare API connection successful!', 'zw-cacheman') . ( ! empty($details) ? ' ' . $details : '' ) ],
+        'connection_error'    => [ 'error', __('Cloudflare API connection failed: ', 'zw-cacheman') . $details ],
+        'missing_credentials' => [ 'error', __('Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman') ],
+        'cron_executed'       => [ 'success', __('Queue processing has been manually executed.', 'zw-cacheman') ],
     ];
 
-    if (isset($notices[$message])) {
-        list($type, $text) = $notices[$message];
+    if (isset($notices[ $message ])) {
+        list( $type, $text ) = $notices[ $message ];
         printf(
             '<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
             esc_attr($type),
@@ -823,7 +855,7 @@ function zw_cacheman_admin_notices()
 
     if (isset($_GET['page']) && 'zw_cacheman_plugin' === $_GET['page']) {
         $next_run = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
-        if (!$next_run) {
+        if (! $next_run) {
             echo '<div class="notice notice-error"><p><strong>' .
                  esc_html__('Warning:', 'zw-cacheman') . ' </strong>' .
                  esc_html__('The WP-Cron job for cache processing is not scheduled. This will prevent automatic processing of the queue.', 'zw-cacheman') .
@@ -834,11 +866,11 @@ function zw_cacheman_admin_notices()
 add_action('admin_notices', __NAMESPACE__ . '\zw_cacheman_admin_notices');
 
 /**
- * Ensure cron job is scheduled on plugin initialization.
+ * Ensures that the cron job for processing queued URLs is scheduled on plugin initialization.
  */
 function zw_cacheman_ensure_cron_scheduled()
 {
-    if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
+    if (! wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
         $scheduled = wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
         $options   = get_option('zw_cacheman_settings', []);
         if (isset($options['zw_cacheman_debug_mode']) && $options['zw_cacheman_debug_mode']) {
@@ -853,7 +885,7 @@ function zw_cacheman_ensure_cron_scheduled()
 add_action('init', __NAMESPACE__ . '\zw_cacheman_ensure_cron_scheduled');
 
 /**
- * Main function to initialize the plugin.
+ * Initializes the plugin by returning a CacheManager instance.
  */
 function zw_cacheman_manager_init()
 {
