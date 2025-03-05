@@ -268,54 +268,38 @@ class CacheManagerAdmin
             return;
         }
         $action = sanitize_text_field(wp_unslash($_POST['action']));
-        $actions = [
-            'clear_queue' => [
-                'nonce'        => 'zw_cacheman_nonce',
-                'nonce_action' => 'zw_cacheman_clear_queue',
-                'callback'     => function () {
-                    delete_option(ZW_CACHEMAN_LOW_PRIORITY_STORE);
-                    return [ 'message' => 'queue_cleared' ];
-                },
-            ],
-            'test_connection' => [
-                'nonce'        => 'zw_cacheman_test_nonce',
-                'nonce_action' => 'zw_cacheman_test_connection',
-                'callback'     => function () {
-                    $zone_id = isset($_POST['zw_cacheman_zone_id']) ? sanitize_text_field(wp_unslash($_POST['zw_cacheman_zone_id'])) : '';
-                    $api_key = isset($_POST['zw_cacheman_api_key']) ? sanitize_text_field(wp_unslash($_POST['zw_cacheman_api_key'])) : '';
-                    if (empty($zone_id) || empty($api_key)) {
-                        return [ 'message' => 'missing_credentials' ];
-                    }
-                    $result = $this->cache_manager->test_cloudflare_connection($zone_id, $api_key);
-                    return [
-                        'message' => 'connection_' . ( $result['success'] ? 'success' : 'error' ),
-                        'details' => urlencode($result['message']),
-                    ];
-                },
-            ],
-            'force_cron' => [
-                'nonce'        => 'zw_cacheman_cron_nonce',
-                'nonce_action' => 'zw_cacheman_force_cron',
-                'callback'     => function () {
-                    $this->cache_manager->debug_log('Manual execution of queue processing triggered from admin.');
-                    $this->cache_manager->process_queued_low_priority_urls();
-                    if (! wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
-                        wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
-                    }
-                    return [ 'message' => 'cron_executed' ];
-                },
-            ],
-        ];
 
-        if (isset($actions[ $action ])) {
-            $handler = $actions[ $action ];
-            // Verify nonce using check_admin_referer; this will automatically exit if the nonce is invalid.
-            check_admin_referer($handler['nonce_action'], $handler['nonce']);
-            $result = call_user_func($handler['callback']);
-            $query_args = array_merge([ 'page' => 'zw_cacheman_plugin' ], $result);
-            wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
-            exit;
+        if ('clear_queue' === $action) {
+            check_admin_referer('zw_cacheman_clear_queue', 'zw_cacheman_nonce');
+            delete_option(ZW_CACHEMAN_LOW_PRIORITY_STORE);
+            $result = [ 'message' => 'queue_cleared' ];
+        } elseif ('test_connection' === $action) {
+            check_admin_referer('zw_cacheman_test_connection', 'zw_cacheman_test_nonce');
+            $zone_id = isset($_POST['zw_cacheman_zone_id']) ? sanitize_text_field(wp_unslash($_POST['zw_cacheman_zone_id'])) : '';
+            $api_key = isset($_POST['zw_cacheman_api_key']) ? sanitize_text_field(wp_unslash($_POST['zw_cacheman_api_key'])) : '';
+            if (empty($zone_id) || empty($api_key)) {
+                $result = [ 'message' => 'missing_credentials' ];
+            } else {
+                $connection_result = $this->cache_manager->test_cloudflare_connection($zone_id, $api_key);
+                $result = [
+                    'message' => 'connection_' . ( $connection_result['success'] ? 'success' : 'error' ),
+                    'details' => urlencode($connection_result['message']),
+                ];
+            }
+        } elseif ('force_cron' === $action) {
+            check_admin_referer('zw_cacheman_force_cron', 'zw_cacheman_cron_nonce');
+            $this->cache_manager->debug_log('Manual execution of queue processing triggered from admin.');
+            $this->cache_manager->process_queued_low_priority_urls();
+            if (! wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
+                wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
+            }
+            $result = [ 'message' => 'cron_executed' ];
+        } else {
+            return;
         }
+        $query_args = array_merge([ 'page' => 'zw_cacheman_plugin' ], $result);
+        wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
+        exit;
     }
 
     /**
