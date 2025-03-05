@@ -386,9 +386,9 @@ class CacheManager
         $next_run = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
 
         if ($next_run) {
-            $time_diff = $next_run - time();
             // translators: %1$s is the date/time of the next run; %2$d is the number of seconds until the next run.
-            $next_run_message = esc_html__('Next scheduled run: %1$s (in %2$d seconds)', 'zw-cacheman');
+            $time_diff         = $next_run - time();
+            $next_run_message  = esc_html__('Next scheduled run: %1$s (in %2$d seconds)', 'zw-cacheman');
             printf('<p>' . $next_run_message . '</p>', date_i18n('Y-m-d H:i:s', $next_run), $time_diff);
         } else {
             echo '<p class="notice notice-error">' . esc_html__('WP-Cron job is not scheduled! This is a problem.', 'zw-cacheman') . '</p>';
@@ -556,7 +556,7 @@ class CacheManager
      */
     public function get_matching_rest_endpoint($url, $context)
     {
-        $url = trailingslashit($url);
+        $url  = trailingslashit($url);
         $type = isset($context['type']) ? $context['type'] : '';
 
         switch ($type) {
@@ -599,11 +599,8 @@ class CacheManager
                     return '';
                 }
                 return trailingslashit(rest_url('wp/v2/users/' . intval($context['user_id'])));
-                break;
-
             case 'home':
                 return trailingslashit(rest_url());
-                break;
         }
         return '';
     }
@@ -631,14 +628,15 @@ class CacheManager
                 if ($terms && ! is_wp_error($terms)) {
                     foreach ($terms as $term) {
                         // Standard term link.
-                        $term_link = trailingslashit(get_term_link($term, $taxonomy));
-                        if (! is_wp_error($term_link)) {
-                            $urls[] = $term_link;
-                        }
-                        // Use the universal method to get the REST endpoint.
-                        $rest_endpoint = $this->get_matching_rest_endpoint($term_link, [ 'type' => 'taxonomy', 'term' => $term ]);
-                        if (! empty($rest_endpoint)) {
-                            $urls[] = $rest_endpoint;
+                        $term_link_raw = get_term_link($term, $taxonomy);
+                        if (! is_wp_error($term_link_raw)) {
+                            $term_link = trailingslashit($term_link_raw);
+                            $urls[]    = $term_link;
+                            // Use the universal method to get the REST endpoint.
+                            $rest_endpoint = $this->get_matching_rest_endpoint($term_link, [ 'type' => 'taxonomy', 'term' => $term ]);
+                            if (! empty($rest_endpoint)) {
+                                $urls[] = $rest_endpoint;
+                            }
                         }
                     }
                 }
@@ -727,6 +725,38 @@ class CacheManager
         $all_urls      = array_unique($all_urls);
         update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $all_urls);
         $this->debug_log('Queued ' . count($urls) . ' low-priority URLs for later processing.');
+    }
+
+    /**
+     * Processes queued low-priority URLs.
+     *
+     * Retrieves any queued URLs from the low-priority store, attempts to purge a limited
+     * batch of URLs (as defined by the 'zw_cacheman_batch_size' setting), and then updates
+     * the queue with any remaining URLs.
+     */
+    public function process_queued_low_priority_urls()
+    {
+        $queued_urls = get_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, []);
+        if (empty($queued_urls)) {
+            $this->debug_log('No low-priority URLs to process.');
+            return;
+        }
+
+        // Get the batch size limit from plugin settings, defaulting to 30 if not set.
+        $batch_size = (int) $this->get_option('zw_cacheman_batch_size', 30);
+        // Extract the URLs to process in this batch.
+        $urls_to_process = array_slice($queued_urls, 0, $batch_size);
+        // Extract the remaining URLs in the queue.
+        $remaining_urls = array_slice($queued_urls, $batch_size);
+
+        $this->debug_log('Processing queued low-priority URLs (batch of ' . count($urls_to_process) . '): ' . implode(', ', $urls_to_process));
+        if ($this->purge_urls($urls_to_process)) {
+            // Update the queue with the remaining URLs.
+            update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $remaining_urls);
+            $this->debug_log('Successfully processed ' . count($urls_to_process) . ' queued low-priority URLs.');
+        } else {
+            $this->debug_log('Failed to process queued low-priority URLs.');
+        }
     }
 }
 
