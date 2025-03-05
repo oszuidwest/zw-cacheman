@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: ZuidWest Cache Manager
- * Description: Purges Cloudflare cache for high-priority URLs immediately when posts are published or edited. It also queues related taxonomy URLs for low-priority batch processing via WP-Cron.
- * Version: 0.6
+ * Description: Purges Cloudflare cache for high-priority URLs (both the “web” URL and its matching REST endpoint) immediately when posts are published or edited. It also queues related taxonomy URLs (and their REST endpoints) for low-priority batch processing via WP-Cron.
+ * Version: 0.6.1
  * Author: Streekomroep ZuidWest
  * License: GPLv3
  */
@@ -56,7 +56,7 @@ class CacheManager
         add_action('admin_init', [ $this, 'settings_init' ]);
         add_filter('plugin_action_links_' . plugin_basename(__FILE__), [ $this, 'add_settings_link' ]);
 
-        // Hook into post status transitions to purge or queue URLs.
+        // Hook into post status transitions to purge URLs.
         add_action('transition_post_status', [ $this, 'handle_post_status_change' ], 10, 3);
 
         // Add WP-Cron schedule and cron job hook.
@@ -487,7 +487,12 @@ class CacheManager
     }
 
     /**
-     * Handles post status transitions and purges or queues URLs as needed.
+     * Handles post status transitions and purges URLs as needed.
+     *
+     * For each “web” URL (permalink, home, feed, archive) this method determines
+     * a corresponding REST endpoint (if available) and purges both immediately.
+     * In addition, for the associated taxonomy and author URLs, it uses the universal
+     * method to derive matching REST endpoints so that both the original and REST URLs are queued.
      *
      * @param string  $new_status The new status of the post.
      * @param string  $old_status The previous status of the post.
@@ -503,29 +508,32 @@ class CacheManager
         $this->debug_log('Post status changed from ' . $old_status . ' to ' . $new_status . ' for post ID ' . $post->ID . '.');
 
         if ('publish' === $new_status || 'publish' === $old_status) {
-            // Define high-priority URLs.
-            $high_priority_urls = [
-                get_permalink($post->ID),
-                get_home_url(),
-                trailingslashit(get_home_url()) . 'feed/',
-                get_post_type_archive_link($post->post_type),
+            // Build an array of web URLs.
+            $web_urls = [
+                trailingslashit(get_permalink($post->ID)),
+                trailingslashit(get_home_url()),
+                trailingslashit(get_feed_link()),
+                trailingslashit(get_post_type_archive_link($post->post_type)),
             ];
+            $web_urls = array_filter($web_urls);
+            $web_urls = array_unique($web_urls);
 
-            $high_priority_urls = array_filter($high_priority_urls);
-            $high_priority_urls = array_unique($high_priority_urls);
+            // For each web URL, get its corresponding REST endpoint using the universal method.
+            $rest_urls = [];
+            foreach ($web_urls as $url) {
+                $rest_endpoint = $this->get_matching_rest_endpoint($url, [ 'type' => 'post', 'post' => $post ]);
+                if (! empty($rest_endpoint)) {
+                    $rest_urls[] = $rest_endpoint;
+                }
+            }
 
-            // Add REST API endpoints using native functions.
-            $rest_api_urls = $this->get_rest_endpoints_for_post($post);
-
-            // Combine regular URLs with REST API URLs.
-            $all_high_priority_urls = array_merge($high_priority_urls, $rest_api_urls);
+            // Combine web URLs with their REST endpoints and purge immediately.
+            $all_high_priority_urls = array_merge($web_urls, $rest_urls);
             $all_high_priority_urls = array_filter($all_high_priority_urls);
             $all_high_priority_urls = array_unique($all_high_priority_urls);
-
-            // Purge all combined endpoints.
             $this->purge_urls($all_high_priority_urls);
 
-            // Retrieve associated taxonomy URLs and queue them for low-priority processing.
+            // Retrieve associated taxonomy and author URLs (with REST endpoints) for low-priority processing.
             $taxonomy_urls = $this->get_associated_taxonomy_urls($post->ID);
             if (! empty($taxonomy_urls)) {
                 $this->queue_low_priority_urls($taxonomy_urls);
@@ -534,77 +542,81 @@ class CacheManager
     }
 
     /**
-     * Retrieves REST API endpoints associated with a given post using native WordPress functions.
+     * Universal method to return the matching REST endpoint for a given URL based on context.
      *
-     * @param WP_Post $post The post object.
-     * @return array List of REST API endpoints.
+     * The context array must include a key 'type' with one of:
+     * - 'post'     : Requires a 'post' key with the WP_Post object.
+     * - 'taxonomy' : Requires a 'term' key with the WP_Term object.
+     * - 'author'   : Requires a 'user_id' key.
+     * - 'home'     : No additional context needed.
+     *
+     * @param string $url     The web URL.
+     * @param array  $context Context information.
+     * @return string The matching REST endpoint URL or an empty string.
      */
-    private function get_rest_endpoints_for_post($post)
+    public function get_matching_rest_endpoint($url, $context)
     {
-        $endpoints = [];
+        $url = trailingslashit($url);
+        $type = isset($context['type']) ? $context['type'] : '';
 
-        // Add the main REST API endpoint.
-        $endpoints[] = rest_url();
+        switch ($type) {
+            case 'post':
+                if (empty($context['post']) || ! ( $context['post'] instanceof \WP_Post )) {
+                    return '';
+                }
+                $post      = $context['post'];
+                $post_type = $post->post_type;
+                $post_obj  = get_post_type_object($post_type);
+                $rest_base = ! empty($post_obj->rest_base) ? $post_obj->rest_base : $post_type;
+                $permalink = trailingslashit(get_permalink($post->ID));
+                $home      = trailingslashit(get_home_url());
+                $archive   = trailingslashit(get_post_type_archive_link($post_type));
+                // Compare and return the matching REST endpoint.
+                if ($url === $permalink) {
+                    return trailingslashit(rest_url('wp/v2/' . $rest_base . '/' . $post->ID));
+                } elseif ($url === $home) {
+                    return trailingslashit(rest_url());
+                } elseif ($url === $archive) {
+                    return trailingslashit(rest_url('wp/v2/' . $rest_base));
+                }
+                break;
 
-        $post_type_object = get_post_type_object($post->post_type);
-        if ($post_type_object) {
-            // Use the registered rest_base if available.
-            $rest_base = ! empty($post_type_object->rest_base) ? $post_type_object->rest_base : $post->post_type;
-            // Endpoint for the collection (e.g., wp/v2/posts).
-            $endpoints[] = rest_url('wp/v2/' . $rest_base);
-            // Endpoint for the specific post object (e.g., wp/v2/posts/123).
-            $endpoints[] = rest_url('wp/v2/' . $rest_base . '/' . $post->ID);
+            case 'taxonomy':
+                if (empty($context['term'])) {
+                    return '';
+                }
+                $term     = $context['term'];
+                $taxonomy = $term->taxonomy;
+                $tax_obj  = get_taxonomy($taxonomy);
+                if (! empty($tax_obj->show_in_rest)) {
+                    $rest_base = ! empty($tax_obj->rest_base) ? $tax_obj->rest_base : $taxonomy;
+                    return trailingslashit(rest_url('wp/v2/' . $rest_base . '/' . $term->term_id));
+                }
+                break;
+
+            case 'author':
+                if (empty($context['user_id'])) {
+                    return '';
+                }
+                return trailingslashit(rest_url('wp/v2/users/' . intval($context['user_id'])));
+                break;
+
+            case 'home':
+                return trailingslashit(rest_url());
+                break;
         }
-
-        // If the post type supports authors, add the author endpoint.
-        if (post_type_supports($post->post_type, 'author')) {
-            $endpoints[] = rest_url('wp/v2/users/' . $post->post_author);
-        }
-
-        return array_unique($endpoints);
+        return '';
     }
 
     /**
-     * Processes queued URLs in batches for low-priority cache purging.
-     */
-    public function process_queued_low_priority_urls()
-    {
-        $start_time = microtime(true);
-        $this->debug_log('Processing queued low-priority URLs. Execution time: ' . date('Y-m-d H:i:s'));
-
-        $queued_urls = get_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, []);
-        if (empty($queued_urls)) {
-            $this->debug_log('No URLs in the queue to process.');
-            return;
-        }
-
-        $batch_size = $this->get_option('zw_cacheman_batch_size', 30);
-        $batch      = array_slice($queued_urls, 0, $batch_size);
-        $this->debug_log('About to process a batch of ' . count($batch) . ' URLs from a total of ' . count($queued_urls) . ' queued URLs.');
-
-        $purge_result = $this->purge_urls($batch);
-        if ($purge_result) {
-            $queued_urls = array_diff($queued_urls, $batch);
-            update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $queued_urls);
-            $this->debug_log('Successfully processed and removed ' . count($batch) . ' URLs from the queue. ' . count($queued_urls) . ' URLs remaining.');
-        } else {
-            $this->debug_log('Failed to process ' . count($batch) . ' URLs. They will be retried in the next run.');
-        }
-
-        $end_time       = microtime(true);
-        $execution_time = $end_time - $start_time;
-        $this->debug_log('Queue processing completed in ' . round($execution_time, 4) . ' seconds.');
-
-        if ($this->get_option('zw_cacheman_debug_mode', false)) {
-            error_log('[ZW Cacheman] Cron execution completed at ' . date('Y-m-d H:i:s'));
-        }
-    }
-
-    /**
-     * Retrieves URLs for all taxonomies associated with a given post.
+     * Retrieves URLs for all taxonomies (and author) associated with a given post.
+     *
+     * For each taxonomy term, this method returns both the term link and, via the universal method,
+     * the corresponding REST endpoint (if the taxonomy supports REST). Likewise, for the author URL,
+     * it returns both the standard author URL and its REST endpoint.
      *
      * @param int $post_id The ID of the post.
-     * @return array List of URLs associated with the post's taxonomies.
+     * @return array List of URLs.
      */
     public function get_associated_taxonomy_urls($post_id)
     {
@@ -613,28 +625,36 @@ class CacheManager
         $post_type = get_post_type($post_id);
         $taxonomies = get_object_taxonomies($post_type);
 
-        if (empty($taxonomies)) {
-            return $urls;
-        }
-
-        foreach ($taxonomies as $taxonomy) {
-            $terms = get_the_terms($post_id, $taxonomy);
-            if ($terms && ! is_wp_error($terms)) {
-                foreach ($terms as $term) {
-                    $term_link = get_term_link($term, $taxonomy);
-                    if (! is_wp_error($term_link)) {
-                        $urls[] = $term_link;
+        if (! empty($taxonomies)) {
+            foreach ($taxonomies as $taxonomy) {
+                $terms = get_the_terms($post_id, $taxonomy);
+                if ($terms && ! is_wp_error($terms)) {
+                    foreach ($terms as $term) {
+                        // Standard term link.
+                        $term_link = trailingslashit(get_term_link($term, $taxonomy));
+                        if (! is_wp_error($term_link)) {
+                            $urls[] = $term_link;
+                        }
+                        // Use the universal method to get the REST endpoint.
+                        $rest_endpoint = $this->get_matching_rest_endpoint($term_link, [ 'type' => 'taxonomy', 'term' => $term ]);
+                        if (! empty($rest_endpoint)) {
+                            $urls[] = $rest_endpoint;
+                        }
                     }
                 }
             }
         }
 
-        // If the post type supports authors, add the author URL.
+        // Process author URL if the post type supports authors.
         if (post_type_supports($post_type, 'author')) {
             $post       = get_post($post_id);
-            $author_url = get_author_posts_url((int) $post->post_author);
+            $author_url = trailingslashit(get_author_posts_url((int) $post->post_author));
             if ($author_url) {
                 $urls[] = $author_url;
+            }
+            $rest_endpoint = $this->get_matching_rest_endpoint($author_url, [ 'type' => 'author', 'user_id' => $post->post_author ]);
+            if (! empty($rest_endpoint)) {
+                $urls[] = $rest_endpoint;
             }
         }
 
