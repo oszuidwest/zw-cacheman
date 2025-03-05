@@ -58,9 +58,9 @@ class CacheManager
         $this->options = get_option('zw_cacheman_settings', []);
 
         // Initialize helper components.
-        $this->api          = CacheManager_API::get_instance();
-        $this->url_resolver = CacheManager_URL_Resolver::get_instance();
-        $this->queue        = CacheManager_Queue::get_instance();
+        $this->api          = CacheManagerApi::get_instance();
+        $this->url_resolver = CacheManagerUrlResolver::get_instance();
+        $this->queue        = CacheManagerQueue::get_instance();
 
         // Hook into post status transitions.
         add_action('transition_post_status', [ $this, 'handle_post_status_change' ], 10, 3);
