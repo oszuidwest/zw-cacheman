@@ -6,23 +6,23 @@ if (! defined('ABSPATH')) {
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Class CacheManager_API
+ * Class CacheManagerApi
  *
  * Handles communication with the Cloudflare API.
  */
-class CacheManager_API
+class CacheManagerApi
 {
     /**
      * Singleton instance.
      *
-     * @var CacheManager_API
+     * @var CacheManagerApi
      */
     private static $instance;
 
     /**
      * Returns the singleton instance.
      *
-     * @return CacheManager_API
+     * @return CacheManagerApi
      */
     public static function get_instance()
     {
@@ -59,7 +59,7 @@ class CacheManager_API
                     'Authorization' => 'Bearer ' . $api_key,
                     'Content-Type'  => 'application/json',
                 ],
-                'body' => wp_json_encode([ 'files' => $urls ]),
+                'body' => wp_json_encode(['files' => $urls]),
             ]
         );
 
@@ -116,7 +116,9 @@ class CacheManager_API
                 'message' => sprintf('Connected to zone: %s', $zone_name),
             ];
         } else {
-            $error_message = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : sprintf('Unknown error (HTTP code: %d)', $response_code);
+            $error_message = isset($body_json['errors'][0]['message'])
+                ? $body_json['errors'][0]['message']
+                : sprintf('Unknown error (HTTP code: %d)', $response_code);
             return [
                 'success' => false,
                 'message' => $error_message,
