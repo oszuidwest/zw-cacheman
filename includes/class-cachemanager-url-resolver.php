@@ -1,9 +1,10 @@
 <?php
+
+namespace ZW_CACHEMAN_Core;
+
 if (! defined('ABSPATH')) {
     exit;
 }
-
-namespace ZW_CACHEMAN_Core;
 
 use WP_Post;
 
