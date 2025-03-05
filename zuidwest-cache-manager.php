@@ -50,16 +50,16 @@ class CacheManager
         $this->options = get_option('zw_cacheman_settings', []);
 
         // Admin hooks.
-        add_action('admin_menu', [ $this, 'add_admin_menu' ]);
-        add_action('admin_init', [ $this, 'settings_init' ]);
-        add_filter('plugin_action_links_' . plugin_basename(__FILE__), [ $this, 'add_settings_link' ]);
+        add_action('admin_menu', [$this, 'add_admin_menu']);
+        add_action('admin_init', [$this, 'settings_init']);
+        add_filter('plugin_action_links_' . plugin_basename(__FILE__), [$this, 'add_settings_link']);
 
         // Post status transition hook.
-        add_action('transition_post_status', [ $this, 'handle_post_status_change' ], 10, 3);
+        add_action('transition_post_status', [$this, 'handle_post_status_change'], 10, 3);
 
         // Cron hooks.
-        add_filter('cron_schedules', [ $this, 'add_cron_interval' ]);
-        add_action(ZW_CACHEMAN_CRON_HOOK, [ $this, 'process_queued_low_priority_urls' ]);
+        add_filter('cron_schedules', [$this, 'add_cron_interval']);
+        add_action(ZW_CACHEMAN_CRON_HOOK, [$this, 'process_queued_low_priority_urls']);
     }
 
     /**
@@ -98,7 +98,7 @@ class CacheManager
             esc_html__('ZuidWest Cache', 'zw-cacheman'),
             'manage_options',
             'zw_cacheman_plugin',
-            [ $this, 'render_options_page' ]
+            [$this, 'render_options_page']
         );
     }
 
@@ -120,16 +120,16 @@ class CacheManager
         add_settings_section(
             'zw_cacheman_plugin_section',
             esc_html__('Cloudflare API Settings', 'zw-cacheman'),
-            [ $this, 'settings_section_callback' ],
+            [$this, 'settings_section_callback'],
             'zw_cacheman_plugin'
         );
 
         // Define fields with a compact array structure.
         $fields = [
-            [ 'zw_cacheman_zone_id', 'Zone ID', 'text', '' ],
-            [ 'zw_cacheman_api_key', 'API Key', 'password', '' ],
-            [ 'zw_cacheman_batch_size', 'Batch Size', 'number', 30 ],
-            [ 'zw_cacheman_debug_mode', 'Debug Mode', 'checkbox', 0 ],
+            ['zw_cacheman_zone_id', 'Zone ID', 'text', ''],
+            ['zw_cacheman_api_key', 'API Key', 'password', ''],
+            ['zw_cacheman_batch_size', 'Batch Size', 'number', 30],
+            ['zw_cacheman_debug_mode', 'Debug Mode', 'checkbox', 0],
         ];
 
         // Register all fields in a loop.
@@ -137,10 +137,10 @@ class CacheManager
             add_settings_field(
                 $field[0],
                 $field[1],
-                [ $this, 'render_settings_field' ],
+                [$this, 'render_settings_field'],
                 'zw_cacheman_plugin',
                 'zw_cacheman_plugin_section',
-                [ 'label_for' => $field[0], 'type' => $field[2], 'default' => $field[3] ]
+                ['label_for' => $field[0], 'type' => $field[2], 'default' => $field[3]]
             );
         }
     }
@@ -180,11 +180,11 @@ class CacheManager
         $sanitized_input['zw_cacheman_debug_mode'] = isset($input['zw_cacheman_debug_mode']) ? 1 : 0;
 
         // Check if API credentials have changed.
-        $api_changed = ( ! isset($old_settings['zw_cacheman_zone_id']) || $sanitized_input['zw_cacheman_zone_id'] !== $old_settings['zw_cacheman_zone_id'] ) ||
-            ( ! isset($old_settings['zw_cacheman_api_key']) || $sanitized_input['zw_cacheman_api_key'] !== $old_settings['zw_cacheman_api_key'] );
+        $api_changed = (!isset($old_settings['zw_cacheman_zone_id']) || $sanitized_input['zw_cacheman_zone_id'] !== $old_settings['zw_cacheman_zone_id']) ||
+            (!isset($old_settings['zw_cacheman_api_key']) || $sanitized_input['zw_cacheman_api_key'] !== $old_settings['zw_cacheman_api_key']);
 
         // Test API connection if credentials are set and have changed.
-        if ($api_changed && ! empty($sanitized_input['zw_cacheman_zone_id']) && ! empty($sanitized_input['zw_cacheman_api_key'])) {
+        if ($api_changed && !empty($sanitized_input['zw_cacheman_zone_id']) && !empty($sanitized_input['zw_cacheman_api_key'])) {
             $test_result = $this->test_cloudflare_connection($sanitized_input['zw_cacheman_zone_id'], $sanitized_input['zw_cacheman_api_key']);
 
             if ($test_result['success']) {
@@ -271,7 +271,7 @@ class CacheManager
      */
     public function render_settings_field($args)
     {
-        $value    = isset($this->options[ $args['label_for'] ]) ? $this->options[ $args['label_for'] ] : $args['default'];
+        $value    = isset($this->options[$args['label_for']]) ? $this->options[$args['label_for']] : $args['default'];
         $field_id = esc_attr($args['label_for']);
 
         $field_types = [
@@ -281,11 +281,11 @@ class CacheManager
             'checkbox' => '<input type="checkbox" id="%1$s" name="zw_cacheman_settings[%1$s]" value="1" %2$s>',
         ];
 
-        if (isset($field_types[ $args['type'] ])) {
+        if (isset($field_types[$args['type']])) {
             printf(
-                $field_types[ $args['type'] ],
+                $field_types[$args['type']],
                 $field_id,
-                $args['type'] === 'checkbox' ? ( $value ? 'checked' : '' ) : esc_attr($value)
+                $args['type'] === 'checkbox' ? ($value ? 'checked' : '') : esc_attr($value)
             );
         }
     }
@@ -303,7 +303,7 @@ class CacheManager
      */
     public function render_options_page()
     {
-        if (! current_user_can('manage_options')) {
+        if (!current_user_can('manage_options')) {
             return;
         }
         ?>
@@ -452,7 +452,7 @@ class CacheManager
      */
     public function get_option($option_name, $default = false)
     {
-        return isset($this->options[ $option_name ]) ? $this->options[ $option_name ] : $default;
+        return isset($this->options[$option_name]) ? $this->options[$option_name] : $default;
     }
 
     /**
@@ -475,7 +475,7 @@ class CacheManager
      */
     public function add_cron_interval($schedules)
     {
-        if (! isset($schedules['every_minute'])) {
+        if (!isset($schedules['every_minute'])) {
             $schedules['every_minute'] = [
                 'interval' => 60,
                 'display'  => esc_html__('Every minute', 'zw-cacheman'),
@@ -512,7 +512,7 @@ class CacheManager
             $this->purge_urls($high_priority_urls);
 
             $taxonomy_urls = $this->get_associated_taxonomy_urls($post->ID);
-            if (! empty($taxonomy_urls)) {
+            if (!empty($taxonomy_urls)) {
                 $this->queue_low_priority_urls($taxonomy_urls);
             }
         }
@@ -534,11 +534,11 @@ class CacheManager
         $new_urls = array_filter(
             $urls,
             function ($url) use ($queued_urls) {
-                return ! in_array($url, $queued_urls, true);
+                return !in_array($url, $queued_urls, true);
             }
         );
 
-        if (! empty($new_urls)) {
+        if (!empty($new_urls)) {
             $combined_urls = array_merge($queued_urls, $new_urls);
             $combined_urls = array_slice($combined_urls, 0, 1000);
             update_option(ZW_CACHEMAN_LOW_PRIORITY_STORE, $combined_urls);
@@ -601,19 +601,20 @@ class CacheManager
 
         foreach ($taxonomies as $taxonomy) {
             $terms = get_the_terms($post_id, $taxonomy);
-            if ($terms && ! is_wp_error($terms)) {
+            if ($terms && !is_wp_error($terms)) {
                 foreach ($terms as $term) {
                     $term_link = get_term_link($term, $taxonomy);
-                    if (! is_wp_error($term_link)) {
+                    if (!is_wp_error($term_link)) {
                         $urls[] = $term_link;
                     }
                 }
             }
         }
 
-        if ('post' === $post_type) {
+        // Only add the author URL if the post type supports authors.
+        if (post_type_supports($post_type, 'author')) {
             $post       = get_post($post_id);
-            $author_url = get_author_posts_url((int) $post->post_author);
+            $author_url = get_author_posts_url((int)$post->post_author);
             if ($author_url) {
                 $urls[] = $author_url;
             }
@@ -653,7 +654,7 @@ class CacheManager
                     'Authorization' => 'Bearer ' . $api_key,
                     'Content-Type'  => 'application/json',
                 ],
-                'body' => wp_json_encode([ 'files' => $urls ]),
+                'body' => wp_json_encode(['files' => $urls]),
             ]
         );
 
@@ -724,7 +725,7 @@ register_deactivation_hook(__FILE__, __NAMESPACE__ . '\zw_cacheman_deactivate');
  */
 function zw_cacheman_admin_init()
 {
-    if (! isset($_POST['action']) || ! current_user_can('manage_options')) {
+    if (!isset($_POST['action']) || !current_user_can('manage_options')) {
         return;
     }
 
@@ -735,7 +736,7 @@ function zw_cacheman_admin_init()
             'nonce_action' => 'zw_cacheman_clear_queue',
             'callback'     => function () {
                 delete_option(ZW_CACHEMAN_LOW_PRIORITY_STORE);
-                return [ 'message' => 'queue_cleared' ];
+                return ['message' => 'queue_cleared'];
             },
         ],
         'test_connection' => [
@@ -746,11 +747,11 @@ function zw_cacheman_admin_init()
                 $zone_id  = $cacheman->get_option('zw_cacheman_zone_id');
                 $api_key  = $cacheman->get_option('zw_cacheman_api_key');
                 if (empty($zone_id) || empty($api_key)) {
-                    return [ 'message' => 'missing_credentials' ];
+                    return ['message' => 'missing_credentials'];
                 }
                 $test_result = $cacheman->test_cloudflare_connection($zone_id, $api_key);
                 return [
-                    'message' => 'connection_' . ( $test_result['success'] ? 'success' : 'error' ),
+                    'message' => 'connection_' . ($test_result['success'] ? 'success' : 'error'),
                     'details' => urlencode($test_result['message']),
                 ];
             },
@@ -762,20 +763,20 @@ function zw_cacheman_admin_init()
                 $cacheman = CacheManager::get_instance();
                 $cacheman->debug_log('Manual execution of queue processing triggered from admin.');
                 $cacheman->process_queued_low_priority_urls();
-                if (! wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
+                if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
                     $scheduled = wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
-                    $cacheman->debug_log('WP-Cron job was ' . ( $scheduled ? 'successfully' : 'unsuccessfully' ) . ' rescheduled during manual run.');
+                    $cacheman->debug_log('WP-Cron job was ' . ($scheduled ? 'successfully' : 'unsuccessfully') . ' rescheduled during manual run.');
                 }
-                return [ 'message' => 'cron_executed' ];
+                return ['message' => 'cron_executed'];
             },
         ],
     ];
 
-    if (isset($actions[ $action ])) {
-        $handler = $actions[ $action ];
-        if (isset($_POST[ $handler['nonce'] ]) && wp_verify_nonce(sanitize_key(wp_unslash($_POST[ $handler['nonce'] ])), $handler['nonce_action'])) {
+    if (isset($actions[$action])) {
+        $handler = $actions[$action];
+        if (isset($_POST[$handler['nonce']]) && wp_verify_nonce(sanitize_key(wp_unslash($_POST[$handler['nonce']])), $handler['nonce_action'])) {
             $result     = $handler['callback']();
-            $query_args = array_merge([ 'page' => 'zw_cacheman_plugin' ], $result);
+            $query_args = array_merge(['page' => 'zw_cacheman_plugin'], $result);
             wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
             exit;
         }
@@ -788,17 +789,15 @@ add_action('admin_init', __NAMESPACE__ . '\zw_cacheman_admin_init');
  */
 function zw_cacheman_admin_notices()
 {
-    if (! isset($_GET['page']) || 'zw_cacheman_plugin' !== $_GET['page'] || ! isset($_GET['message'])) {
+    if (!isset($_GET['page']) || 'zw_cacheman_plugin' !== $_GET['page'] || !isset($_GET['message'])) {
         return;
     }
 
-    // Get and sanitize message parameter.
     $message = '';
     if (isset($_GET['message'])) {
         $message = sanitize_text_field(wp_unslash($_GET['message']));
     }
 
-    // Get and sanitize details parameter.
     $details = '';
     if (isset($_GET['details'])) {
         $details = sanitize_text_field(wp_unslash($_GET['details']));
@@ -806,15 +805,15 @@ function zw_cacheman_admin_notices()
     }
 
     $notices = [
-        'queue_cleared'       => [ 'success', __('Cache queue has been cleared.', 'zw-cacheman') ],
-        'connection_success'  => [ 'success', __('Cloudflare API connection successful!', 'zw-cacheman') . ( ! empty($details) ? ' ' . $details : '' ) ],
-        'connection_error'    => [ 'error', __('Cloudflare API connection failed: ', 'zw-cacheman') . $details ],
-        'missing_credentials' => [ 'error', __('Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman') ],
-        'cron_executed'       => [ 'success', __('Queue processing has been manually executed.', 'zw-cacheman') ],
+        'queue_cleared'       => ['success', __('Cache queue has been cleared.', 'zw-cacheman')],
+        'connection_success'  => ['success', __('Cloudflare API connection successful!', 'zw-cacheman') . (!empty($details) ? ' ' . $details : '')],
+        'connection_error'    => ['error', __('Cloudflare API connection failed: ', 'zw-cacheman') . $details],
+        'missing_credentials' => ['error', __('Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman')],
+        'cron_executed'       => ['success', __('Queue processing has been manually executed.', 'zw-cacheman')],
     ];
 
-    if (isset($notices[ $message ])) {
-        list( $type, $text ) = $notices[ $message ];
+    if (isset($notices[$message])) {
+        list($type, $text) = $notices[$message];
         printf(
             '<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
             esc_attr($type),
@@ -824,7 +823,7 @@ function zw_cacheman_admin_notices()
 
     if (isset($_GET['page']) && 'zw_cacheman_plugin' === $_GET['page']) {
         $next_run = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
-        if (! $next_run) {
+        if (!$next_run) {
             echo '<div class="notice notice-error"><p><strong>' .
                  esc_html__('Warning:', 'zw-cacheman') . ' </strong>' .
                  esc_html__('The WP-Cron job for cache processing is not scheduled. This will prevent automatic processing of the queue.', 'zw-cacheman') .
@@ -839,7 +838,7 @@ add_action('admin_notices', __NAMESPACE__ . '\zw_cacheman_admin_notices');
  */
 function zw_cacheman_ensure_cron_scheduled()
 {
-    if (! wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
+    if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
         $scheduled = wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
         $options   = get_option('zw_cacheman_settings', []);
         if (isset($options['zw_cacheman_debug_mode']) && $options['zw_cacheman_debug_mode']) {
