@@ -32,21 +32,21 @@ class CacheManager
     /**
      * Instance of the API handler.
      *
-     * @var CacheManager_API
+     * @var CacheManagerAPI
      */
     private $api;
 
     /**
      * Instance of the URL resolver.
      *
-     * @var CacheManager_URL_Resolver
+     * @var CacheManagerUrlResolver
      */
     private $url_resolver;
 
     /**
      * Instance of the queue handler.
      *
-     * @var CacheManager_Queue
+     * @var CacheManagerQueue
      */
     private $queue;
 
