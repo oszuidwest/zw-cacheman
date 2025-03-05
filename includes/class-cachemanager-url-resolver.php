@@ -8,23 +8,23 @@ namespace ZW_CACHEMAN_Core;
 use WP_Post;
 
 /**
- * Class CacheManager_URL_Resolver
+ * Class CacheManagerUrlResolver
  *
  * Handles detection of web URLs and resolution of matching REST endpoints.
  */
-class CacheManager_URL_Resolver
+class CacheManagerUrlResolver
 {
     /**
      * Singleton instance.
      *
-     * @var CacheManager_URL_Resolver
+     * @var CacheManagerUrlResolver
      */
     private static $instance;
 
     /**
      * Returns the singleton instance.
      *
-     * @return CacheManager_URL_Resolver
+     * @return CacheManagerUrlResolver
      */
     public static function get_instance()
     {
