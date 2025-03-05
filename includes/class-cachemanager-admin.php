@@ -6,11 +6,11 @@ if (! defined('ABSPATH')) {
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Class CacheManager_Admin
+ * Class CacheManagerAdmin
  *
  * Handles the plugin's admin interface including settings pages, admin actions, and notices.
  */
-class CacheManager_Admin
+class CacheManagerAdmin
 {
     /**
      * Core CacheManager instance.
@@ -309,12 +309,12 @@ class CacheManager_Admin
 
         if (isset($actions[ $action ])) {
             $handler = $actions[ $action ];
-            if (isset($_POST[ $handler['nonce'] ]) && wp_verify_nonce(sanitize_key(wp_unslash($_POST[ $handler['nonce'] ])), $handler['nonce_action'])) {
-                $result = call_user_func($handler['callback']);
-                $query_args = array_merge([ 'page' => 'zw_cacheman_plugin' ], $result);
-                wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
-                exit;
-            }
+            // Verify nonce using check_admin_referer; this will automatically exit if the nonce is invalid.
+            check_admin_referer($handler['nonce_action'], $handler['nonce']);
+            $result = call_user_func($handler['callback']);
+            $query_args = array_merge([ 'page' => 'zw_cacheman_plugin' ], $result);
+            wp_redirect(add_query_arg($query_args, admin_url('options-general.php')));
+            exit;
         }
     }
 
