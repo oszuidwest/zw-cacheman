@@ -214,6 +214,7 @@ class CacheManagerAdmin
             <form method="post" action="">
                 <?php wp_nonce_field('zw_cacheman_test_connection', 'zw_cacheman_test_nonce'); ?>
                 <input type="hidden" name="action" value="test_connection">
+                <input type="hidden" name="zw_cacheman_api_key" value="<?php echo esc_attr($api_key); ?>">
                 <input type="submit" class="button button-secondary" value="<?php esc_attr_e('Test Connection', 'zw-cacheman'); ?>">
             </form>
             <?php
