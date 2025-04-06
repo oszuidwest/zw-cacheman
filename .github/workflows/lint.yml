@@ -4,7 +4,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**/*.php'
+      - 'composer.json'
+      - 'composer.lock'
   pull_request:
+    paths:
+      - '**/*.php'
+      - 'composer.json'
+      - 'composer.lock'
 
 jobs:
   lint:
@@ -44,4 +52,3 @@ jobs:
             plugin_review_phpcs
             file_type
             plugin_readme
-

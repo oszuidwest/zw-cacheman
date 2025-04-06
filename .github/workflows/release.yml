@@ -1,0 +1,87 @@
+name: Publish Plugin Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse version number from plugin file
+        id: get_version
+        run: |
+          # Extract version from the plugin header in zuidwest-cache-manager.php
+          VERSION=$(grep -oP '(?<=^Version:\s).*' zuidwest-cache-manager.php | head -1)
+          echo "Version found: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Fetch latest tag
+        id: fetch_latest_tag
+        run: |
+          LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) || echo "none")
+          echo "Latest tag: $LATEST_TAG"
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+
+      - name: Compare versions and decide if a new release is needed
+        id: compare_versions
+        run: |
+          if [ "$LATEST_TAG" = "none" ]; then
+            echo "No previous tag found. Proceeding with new release."
+            echo "RELEASE_NEEDED=true" >> $GITHUB_ENV
+          elif [ "$(printf '%s\n' "$VERSION" "$LATEST_TAG" | sort -V | head -n1)" != "$VERSION" ]; then
+            echo "New version detected. Proceeding with new release."
+            echo "RELEASE_NEEDED=true" >> $GITHUB_ENV
+          else
+            echo "No new version. Skipping release."
+            echo "RELEASE_NEEDED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Stop job if no release needed
+        if: env.RELEASE_NEEDED == 'false'
+        run: |
+          echo "Skipping release steps as no new version was detected."
+          exit 0
+
+      - name: Tag the new version
+        if: env.RELEASE_NEEDED == 'true'
+        run: |
+          git tag ${{ env.VERSION }}
+          git push origin ${{ env.VERSION }}
+          echo "Tag ${{ env.VERSION }} created and pushed."
+
+      - name: Prepare release directory
+        if: env.RELEASE_NEEDED == 'true'
+        run: |
+          mkdir -p release
+          rsync -av --progress . ./release \
+            --exclude release \
+            --exclude .git \
+            --exclude .github \
+            --exclude node_modules \
+            --exclude vendor \
+            --exclude composer.json \
+            --exclude composer.lock \
+            --exclude phpcs.xml \
+            --exclude phpstan.neon
+
+      - name: Create zip package
+        if: env.RELEASE_NEEDED == 'true'
+        run: |
+          cd release
+          zip -r ../zuidwest-cacheman-${{ env.VERSION }}.zip ./*
+          cd ..
+          ls -la zuidwest-cacheman-${{ env.VERSION }}.zip
+
+      - name: Create GitHub Release and upload zip
+        if: env.RELEASE_NEEDED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Creating GitHub release and uploading zip package..."
+          gh release create ${{ env.VERSION }} zuidwest-cacheman-${{ env.VERSION }}.zip --title "${{ env.VERSION }}" --notes "Automated release for version ${{ env.VERSION }}"
