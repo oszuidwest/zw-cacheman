@@ -115,7 +115,7 @@ jobs:
         run: |
           gh release create ${{ env.VERSION }} \
             zuidwest-cacheman-${{ env.VERSION }}.zip \
-            --title "Release ${{ env.VERSION }}" \
+            --title "${{ env.VERSION }}" \
             --notes "Automated release for version ${{ env.VERSION }}"
 
       - name: Notify on Failure
