@@ -1,62 +1,92 @@
 name: Publish Plugin Release
-
 on:
   workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release even if version unchanged'
+        type: boolean
+        default: false
+        required: false
 
 jobs:
-  build:
+  validate-and-release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Parse version number from plugin file
-        id: get_version
+      - name: Extract and Validate Version
+        id: version_extraction
         run: |
-          # Extract version from the plugin header in zuidwest-cache-manager.php
-          VERSION=$(grep -oP '(?<=^Version:\s).*' zuidwest-cache-manager.php | head -1)
-          echo "Version found: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          # Extract version using sed to handle various whitespace scenarios
+          VERSION=$(sed -n 's/.*Version:\s*\([0-9.]\+\).*/\1/p' zuidwest-cache-manager.php | head -1)
 
-      - name: Fetch latest tag
-        id: fetch_latest_tag
-        run: |
-          LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) || echo "none")
-          echo "Latest tag: $LATEST_TAG"
-          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
-
-      - name: Compare versions and decide if a new release is needed
-        id: compare_versions
-        run: |
-          if [ "$LATEST_TAG" = "none" ]; then
-            echo "No previous tag found. Proceeding with new release."
-            echo "RELEASE_NEEDED=true" >> $GITHUB_ENV
-          elif [ "$(printf '%s\n' "$VERSION" "$LATEST_TAG" | sort -V | head -n1)" != "$VERSION" ]; then
-            echo "New version detected. Proceeding with new release."
-            echo "RELEASE_NEEDED=true" >> $GITHUB_ENV
-          else
-            echo "No new version. Skipping release."
-            echo "RELEASE_NEEDED=false" >> $GITHUB_ENV
+          # Validate version format (semantic versioning)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Error: Invalid version format - $VERSION"
+            exit 1
           fi
 
-      - name: Stop job if no release needed
+          echo "Extracted Version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Fetch and Validate Latest Tag
+        id: tag_validation
+        run: |
+          # Get latest tag, handling no tags scenario
+          LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "")
+          
+          echo "Latest Tag: ${LATEST_TAG:-No previous tag}"
+          echo "LATEST_TAG=${LATEST_TAG}" >> $GITHUB_ENV
+
+      - name: Compare Versions and Decide Release
+        id: release_decision
+        env:
+          FORCE_RELEASE: ${{ github.event.inputs.force_release }}
+        run: |
+          # Compare versions function
+          version_gt() {
+            test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1"
+          }
+
+          # Determine if release is needed
+          RELEASE_NEEDED=false
+          
+          if [[ "$FORCE_RELEASE" == "true" ]]; then
+            echo "Forced release triggered"
+            RELEASE_NEEDED=true
+          elif [[ -z "$LATEST_TAG" ]]; then
+            echo "No previous tag found. First release."
+            RELEASE_NEEDED=true
+          elif version_gt "$VERSION" "$LATEST_TAG"; then
+            echo "New version is higher than latest tag"
+            RELEASE_NEEDED=true
+          else
+            echo "No new release needed"
+            RELEASE_NEEDED=false
+          fi
+          
+          echo "Release needed: $RELEASE_NEEDED"
+          echo "RELEASE_NEEDED=$RELEASE_NEEDED" >> $GITHUB_ENV
+
+      - name: Stop if No Release Needed
         if: env.RELEASE_NEEDED == 'false'
         run: |
-          echo "Skipping release steps as no new version was detected."
+          echo "Skipping release: No new version detected"
           exit 0
 
-      - name: Tag the new version
-        if: env.RELEASE_NEEDED == 'true'
+      - name: Tag the New Version
         run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git tag ${{ env.VERSION }}
           git push origin ${{ env.VERSION }}
-          echo "Tag ${{ env.VERSION }} created and pushed."
+          echo "Tag ${{ env.VERSION }} created and pushed"
 
-      - name: Prepare release directory
-        if: env.RELEASE_NEEDED == 'true'
+      - name: Prepare Release Directory
         run: |
           mkdir -p release
           rsync -av --progress . ./release \
@@ -68,20 +98,27 @@ jobs:
             --exclude composer.json \
             --exclude composer.lock \
             --exclude phpcs.xml \
-            --exclude phpstan.neon
+            --exclude phpstan.neon \
+            --exclude '*.log' \
+            --exclude '.gitignore'
 
-      - name: Create zip package
-        if: env.RELEASE_NEEDED == 'true'
+      - name: Create Zip Package
         run: |
           cd release
           zip -r ../zuidwest-cacheman-${{ env.VERSION }}.zip ./*
           cd ..
           ls -la zuidwest-cacheman-${{ env.VERSION }}.zip
 
-      - name: Create GitHub Release and upload zip
-        if: env.RELEASE_NEEDED == 'true'
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Creating GitHub release and uploading zip package..."
-          gh release create ${{ env.VERSION }} zuidwest-cacheman-${{ env.VERSION }}.zip --title "${{ env.VERSION }}" --notes "Automated release for version ${{ env.VERSION }}"
+          gh release create ${{ env.VERSION }} \
+            zuidwest-cacheman-${{ env.VERSION }}.zip \
+            --title "${{ env.VERSION }}" \
+            --notes "Automated release for version ${{ env.VERSION }}"
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "::error::Release process failed. Please check workflow logs."
