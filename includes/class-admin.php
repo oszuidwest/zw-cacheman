@@ -25,13 +25,20 @@ class CachemanAdmin
     private $api;
 
     /**
+     * Logger instance
+     *
+     * @var CachemanLogger
+     */
+    private $logger;
+
+    /**
      * Default settings
      *
      * @var array
      */
     private $default_settings = [
-        'zone_id' => '',
-        'api_key' => '',
+        'zone_id'    => '',
+        'api_key'    => '',
         'batch_size' => 30,
         'debug_mode' => false
     ];
@@ -41,11 +48,13 @@ class CachemanAdmin
      *
      * @param CachemanManager $manager The manager instance.
      * @param CachemanAPI     $api     The API instance.
+     * @param CachemanLogger  $logger  The logger instance.
      */
-    public function __construct($manager, $api)
+    public function __construct($manager, $api, $logger)
     {
         $this->manager = $manager;
-        $this->api = $api;
+        $this->api     = $api;
+        $this->logger  = $logger;
 
         // Register admin hooks
         add_action('admin_menu', [$this, 'add_admin_menu']);
@@ -87,9 +96,9 @@ class CachemanAdmin
             'zw_cacheman_settings',
             ZW_CACHEMAN_SETTINGS,
             [
-                'type' => 'array',
+                'type'              => 'array',
                 'sanitize_callback' => $sanitize_callback,
-                'description' => __('Settings for ZuidWest Cache Manager', 'zw-cacheman'),
+                'description'       => __('Settings for ZuidWest Cache Manager', 'zw-cacheman'),
             ]
         );
 
@@ -200,7 +209,9 @@ class CachemanAdmin
 
         // Sanitize text fields
         $sanitized['zone_id'] = isset($input['zone_id']) ? sanitize_text_field($input['zone_id']) : '';
-        $sanitized['api_key'] = isset($input['api_key']) ? sanitize_text_field($input['api_key']) : '';
+        $sanitized['api_key'] = isset($input['api_key']) && !empty($input['api_key'])
+            ? sanitize_text_field($input['api_key'])
+            : $old_settings['api_key']; // Keep old API key if empty (to prevent accidental clear)
 
         // Sanitize numeric fields
         $sanitized['batch_size'] = isset($input['batch_size']) ? intval($input['batch_size']) : 30;
@@ -214,8 +225,17 @@ class CachemanAdmin
             );
         }
 
-        // Sanitize checkbox
-        $sanitized['debug_mode'] = isset($input['debug_mode']) ? 1 : 0;
+        // Sanitize checkbox to boolean
+        $sanitized['debug_mode'] = isset($input['debug_mode']) ? true : false;
+
+        // If debug mode setting changed, update the logger
+        if ($sanitized['debug_mode'] !== $old_settings['debug_mode']) {
+            $this->logger->set_debug_mode($sanitized['debug_mode']);
+
+            if ($sanitized['debug_mode']) {
+                $this->logger->debug('Admin', 'Debug mode enabled');
+            }
+        }
 
         // Test API connection if credentials changed
         $credentials_changed = (
@@ -345,12 +365,68 @@ class CachemanAdmin
                     </div>
                 </details>
             <?php endif; ?>
+            
+            <hr>
+            
+            <h2><?php echo esc_html__('Debug Logs', 'zw-cacheman'); ?></h2>
+            <?php if (!empty($settings['debug_mode'])) : ?>
+                <p><?php echo esc_html__('Debug mode is enabled. Logs are being written to:', 'zw-cacheman'); ?></p>
+                <code><?php echo esc_html($this->logger->get_current_log_path()); ?></code>
+                
+                <br><br>
+                
+                <form method="post" action="">
+                    <?php wp_nonce_field('zw_cacheman_view_logs', 'zw_cacheman_logs_nonce'); ?>
+                    <input type="hidden" name="zw_cacheman_action" value="view_logs">
+                    <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('View Latest Log Entries', 'zw-cacheman'); ?>">
+                </form>
+                
+                <form method="post" action="" style="margin-top: 10px;">
+                    <?php wp_nonce_field('zw_cacheman_clear_logs', 'zw_cacheman_clear_logs_nonce'); ?>
+                    <input type="hidden" name="zw_cacheman_action" value="clear_logs">
+                    <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('Clear All Logs', 'zw-cacheman'); ?>" onclick="return confirm('<?php echo esc_js(__('Are you sure you want to delete all log files?', 'zw-cacheman')); ?>');">
+                </form>
+                
+                <?php if (isset($_GET['show_logs']) && $_GET['show_logs'] === '1') : ?>
+                    <?php
+                    $log_files = $this->logger->get_log_files(5);
+                    if (!empty($log_files)) :
+                        foreach ($log_files as $log_file) :
+                            $log_content = @file_get_contents($log_file);
+                            $log_name = basename($log_file);
+                            if ($log_content) :
+                                // Get last 100 lines only
+                                $lines = explode("\n", $log_content);
+                                $lines = array_slice($lines, max(0, count($lines) - 100));
+                                $log_content = implode("\n", $lines);
+                                ?>
+                            <h3><?php echo esc_html($log_name); ?></h3>
+                            <div style="max-height: 300px; overflow-y: auto; margin-top: 10px; margin-bottom: 20px; padding: 10px; background: #f8f8f8; border: 1px solid #ddd; font-family: monospace; white-space: pre-wrap; font-size: 12px;">
+                                <?php echo esc_html($log_content); ?>
+                            </div>
+                            <?php else : ?>
+                            <h3><?php echo esc_html($log_name); ?></h3>
+                            <div class="notice notice-error inline">
+                                <p><?php echo esc_html__('Could not read log file.', 'zw-cacheman'); ?></p>
+                            </div>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php else : ?>
+                        <div class="notice notice-info inline">
+                            <p><?php echo esc_html__('No log files found.', 'zw-cacheman'); ?></p>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+                
+            <?php else : ?>
+                <p><?php echo esc_html__('Debug mode is disabled. Enable it to generate detailed logs.', 'zw-cacheman'); ?></p>
+            <?php endif; ?>
         </div>
         <?php
     }
 
     /**
-     * Handle admin actions (test connection, force cron, clear queue)
+     * Handle admin actions (test connection, force cron, clear queue, etc.)
      *
      * @return void
      */
@@ -370,6 +446,7 @@ class CachemanAdmin
                 if (empty($settings['zone_id']) || empty($settings['api_key'])) {
                     $redirect_args = ['zw_message' => 'missing_credentials'];
                 } else {
+                    $this->logger->debug('Admin', 'Manual connection test initiated');
                     $result = $this->api->test_connection($settings['zone_id'], $settings['api_key']);
                     $redirect_args = [
                         'zw_message' => $result['success'] ? 'connection_success' : 'connection_error',
@@ -380,11 +457,13 @@ class CachemanAdmin
 
             case 'force_cron':
                 check_admin_referer('zw_cacheman_force_cron', 'zw_cacheman_cron_nonce');
+                $this->logger->debug('Admin', 'Manual queue processing initiated');
                 $this->manager->process_queue();
 
                 // Ensure cron is scheduled
                 if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
                     wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
+                    $this->logger->debug('Admin', 'Re-scheduled missing cron job');
                 }
 
                 $redirect_args = ['zw_message' => 'cron_executed'];
@@ -392,8 +471,25 @@ class CachemanAdmin
 
             case 'clear_queue':
                 check_admin_referer('zw_cacheman_clear_queue', 'zw_cacheman_queue_nonce');
+                $queue = get_option(ZW_CACHEMAN_QUEUE, []);
+                $queue_count = count($queue);
+                $this->logger->debug('Admin', 'Manually cleared queue with ' . $queue_count . ' items');
                 delete_option(ZW_CACHEMAN_QUEUE);
                 $redirect_args = ['zw_message' => 'queue_cleared'];
+                break;
+
+            case 'view_logs':
+                check_admin_referer('zw_cacheman_view_logs', 'zw_cacheman_logs_nonce');
+                $redirect_args = ['show_logs' => '1'];
+                break;
+
+            case 'clear_logs':
+                check_admin_referer('zw_cacheman_clear_logs', 'zw_cacheman_clear_logs_nonce');
+                $success = $this->logger->clear_logs();
+                $this->logger->debug('Admin', 'All logs cleared');
+                $redirect_args = [
+                    'zw_message' => $success ? 'logs_cleared' : 'logs_clear_failed'
+                ];
                 break;
 
             default:
@@ -425,11 +521,13 @@ class CachemanAdmin
             $details = isset($_GET['zw_details']) ? urldecode(sanitize_text_field(wp_unslash($_GET['zw_details']))) : '';
 
             $notices = [
-                'queue_cleared' => ['success', __('Cache queue has been cleared.', 'zw-cacheman')],
+                'queue_cleared'     => ['success', __('Cache queue has been cleared.', 'zw-cacheman')],
                 'connection_success' => ['success', __('Cloudflare API connection successful!', 'zw-cacheman') . ' ' . $details],
-                'connection_error' => ['error', __('Cloudflare API connection failed: ', 'zw-cacheman') . $details],
+                'connection_error'  => ['error', __('Cloudflare API connection failed: ', 'zw-cacheman') . $details],
                 'missing_credentials' => ['error', __('Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman')],
-                'cron_executed' => ['success', __('Queue processing has been manually executed.', 'zw-cacheman')]
+                'cron_executed'     => ['success', __('Queue processing has been manually executed.', 'zw-cacheman')],
+                'logs_cleared'      => ['success', __('All log files have been deleted.', 'zw-cacheman')],
+                'logs_clear_failed' => ['error', __('Failed to delete some log files.', 'zw-cacheman')]
             ];
 
             if (isset($notices[$message])) {

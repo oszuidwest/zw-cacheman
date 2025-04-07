@@ -11,17 +11,29 @@ namespace ZW_CACHEMAN_Core;
 class CachemanAPI
 {
     /**
-     * Log debug messages
+     * URL Helper instance
      *
-     * @param string $message The message to log.
-     * @return void
+     * @var CachemanUrlHelper
      */
-    public function debug_log($message)
+    private $url_helper;
+
+    /**
+     * Logger instance
+     *
+     * @var CachemanLogger
+     */
+    private $logger;
+
+    /**
+     * Constructor
+     *
+     * @param CachemanUrlHelper $url_helper The URL helper instance.
+     * @param CachemanLogger    $logger     The logger instance.
+     */
+    public function __construct($url_helper, $logger)
     {
-        $settings = get_option(ZW_CACHEMAN_SETTINGS, []);
-        if (!empty($settings['debug_mode'])) {
-            error_log('[ZW Cacheman API] ' . $message);
-        }
+        $this->url_helper = $url_helper;
+        $this->logger = $logger;
     }
 
     /**
@@ -36,45 +48,44 @@ class CachemanAPI
             return true;
         }
 
-        // Filter out any empty or invalid URLs
-        $clean_urls = array_values(array_filter($urls, function ($url) {
-            return !empty($url) && filter_var($url, FILTER_VALIDATE_URL);
-        }));
+        // Use URL helper to clean and validate URLs
+        $clean_urls = $this->url_helper->clean_urls($urls);
 
         if (empty($clean_urls)) {
-            $this->debug_log('No valid URLs to purge after filtering');
+            $this->logger->debug('API', 'No valid URLs to purge after cleaning and filtering');
             return true;
         }
 
-        $settings = get_option(ZW_CACHEMAN_SETTINGS, []);
+        $settings = get_option(ZW_CACHEMAN_SETTINGS, array());
         $zone_id = !empty($settings['zone_id']) ? $settings['zone_id'] : '';
         $api_key = !empty($settings['api_key']) ? $settings['api_key'] : '';
 
         if (empty($zone_id) || empty($api_key)) {
-            $this->debug_log('Cloudflare credentials missing. Cannot purge URLs.');
+            $this->logger->error('API', 'Cloudflare credentials missing. Cannot purge URLs.');
             return false;
         }
 
         $api_endpoint = 'https://api.cloudflare.com/client/v4/zones/' . $zone_id . '/purge_cache';
 
-        $request_body = wp_json_encode([
+        $request_body = wp_json_encode(array(
             'files' => $clean_urls
-        ]);
+        ));
 
-        $this->debug_log('Sending request to Cloudflare with ' . count($clean_urls) . ' URLs');
-        $this->debug_log('Request body: ' . $request_body);
+        $this->logger->debug('API', 'Sending request to Cloudflare with ' . count($clean_urls) . ' URLs');
+        $this->logger->debug('API', 'Request body: ' . $request_body);
 
-        $response = wp_remote_post($api_endpoint, [
+        $response = wp_remote_post($api_endpoint, array(
             'timeout' => 30,
-            'headers' => [
+            'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
                 'Content-Type'  => 'application/json',
-            ],
+            ),
             'body' => $request_body,
-        ]);
+        ));
 
         if (is_wp_error($response)) {
-            $this->debug_log('API request failed: ' . $response->get_error_message());
+            $error_message = $response->get_error_message();
+            $this->logger->error('API', 'API request failed: ' . $error_message);
             return false;
         }
 
@@ -83,12 +94,20 @@ class CachemanAPI
         $body_json = json_decode($body, true);
 
         if (200 === $response_code && isset($body_json['success']) && true === $body_json['success']) {
-            $this->debug_log('Successfully purged ' . count($clean_urls) . ' URLs');
+            $this->logger->debug('API', 'Successfully purged ' . count($clean_urls) . ' URLs');
             return true;
         } else {
-            $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error (HTTP ' . $response_code . ')';
-            $this->debug_log('API request failed: ' . $error);
-            $this->debug_log('Response body: ' . $body);
+            $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error';
+            $error_code = isset($body_json['errors'][0]['code']) ? $body_json['errors'][0]['code'] : 'Unknown code';
+
+            // Log the error with both HTTP and API codes
+            $this->logger->error('API', 'Failed to purge URLs. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error);
+            $this->logger->error('API', 'Response body: ' . $body);
+
+            // Log the failed URLs
+            $this->logger->error('API', 'Failed to purge the following URLs: ' . implode(', ', array_slice($clean_urls, 0, 5)) .
+                (count($clean_urls) > 5 ? ' and ' . (count($clean_urls) - 5) . ' more.' : ''));
+
             return false;
         }
     }
@@ -105,45 +124,44 @@ class CachemanAPI
             return true;
         }
 
-        // Filter out any empty prefixes
-        $clean_prefixes = array_values(array_filter($prefixes, function ($prefix) {
-            return !empty($prefix);
-        }));
+        // Use URL helper to clean and validate prefixes
+        $clean_prefixes = $this->url_helper->clean_prefixes($prefixes);
 
         if (empty($clean_prefixes)) {
-            $this->debug_log('No valid prefixes to purge after filtering');
+            $this->logger->debug('API', 'No valid prefixes to purge after filtering');
             return true;
         }
 
-        $settings = get_option(ZW_CACHEMAN_SETTINGS, []);
+        $settings = get_option(ZW_CACHEMAN_SETTINGS, array());
         $zone_id = !empty($settings['zone_id']) ? $settings['zone_id'] : '';
         $api_key = !empty($settings['api_key']) ? $settings['api_key'] : '';
 
         if (empty($zone_id) || empty($api_key)) {
-            $this->debug_log('Cloudflare credentials missing. Cannot purge prefixes.');
+            $this->logger->error('API', 'Cloudflare credentials missing. Cannot purge prefixes.');
             return false;
         }
 
         $api_endpoint = 'https://api.cloudflare.com/client/v4/zones/' . $zone_id . '/purge_cache';
 
-        $request_body = wp_json_encode([
+        $request_body = wp_json_encode(array(
             'prefixes' => $clean_prefixes
-        ]);
+        ));
 
-        $this->debug_log('Sending request to Cloudflare with ' . count($clean_prefixes) . ' prefixes');
-        $this->debug_log('Request body: ' . $request_body);
+        $this->logger->debug('API', 'Sending request to Cloudflare with ' . count($clean_prefixes) . ' prefixes');
+        $this->logger->debug('API', 'Request body: ' . $request_body);
 
-        $response = wp_remote_post($api_endpoint, [
+        $response = wp_remote_post($api_endpoint, array(
             'timeout' => 30,
-            'headers' => [
+            'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
                 'Content-Type'  => 'application/json',
-            ],
+            ),
             'body' => $request_body,
-        ]);
+        ));
 
         if (is_wp_error($response)) {
-            $this->debug_log('API request failed: ' . $response->get_error_message());
+            $error_message = $response->get_error_message();
+            $this->logger->error('API', 'API request failed: ' . $error_message);
             return false;
         }
 
@@ -152,12 +170,20 @@ class CachemanAPI
         $body_json = json_decode($body, true);
 
         if (200 === $response_code && isset($body_json['success']) && true === $body_json['success']) {
-            $this->debug_log('Successfully purged ' . count($clean_prefixes) . ' prefixes');
+            $this->logger->debug('API', 'Successfully purged ' . count($clean_prefixes) . ' prefixes');
             return true;
         } else {
-            $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error (HTTP ' . $response_code . ')';
-            $this->debug_log('API request failed: ' . $error);
-            $this->debug_log('Response body: ' . $body);
+            $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error';
+            $error_code = isset($body_json['errors'][0]['code']) ? $body_json['errors'][0]['code'] : 'Unknown code';
+
+            // Log the error with both HTTP and API codes
+            $this->logger->error('API', 'Failed to purge prefixes. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error);
+            $this->logger->error('API', 'Response body: ' . $body);
+
+            // Log the failed prefixes
+            $this->logger->error('API', 'Failed to purge the following prefixes: ' . implode(', ', array_slice($clean_prefixes, 0, 5)) .
+                (count($clean_prefixes) > 5 ? ' and ' . (count($clean_prefixes) - 5) . ' more.' : ''));
+
             return false;
         }
     }
@@ -174,11 +200,11 @@ class CachemanAPI
             return true;
         }
 
-        $this->debug_log('Processing ' . count($purge_items) . ' purge items');
+        $this->logger->debug('API', 'Processing ' . count($purge_items) . ' purge items');
 
         // Separate items by type
-        $files = [];
-        $prefixes = [];
+        $files = array();
+        $prefixes = array();
 
         foreach ($purge_items as $item) {
             if ($item['type'] === 'file') {
@@ -192,7 +218,11 @@ class CachemanAPI
         $files_success = true;
         if (!empty($files)) {
             $files_success = $this->purge_urls($files);
-            $this->debug_log('Purged ' . count($files) . ' individual URLs: ' . ($files_success ? 'success' : 'failed'));
+            if ($files_success) {
+                $this->logger->debug('API', 'Successfully purged ' . count($files) . ' individual URLs');
+            } else {
+                $this->logger->error('API', 'Failed to purge ' . count($files) . ' individual URLs');
+            }
         }
 
         // Purge prefixes in batches of 30 (Cloudflare limit)
@@ -200,17 +230,23 @@ class CachemanAPI
         if (!empty($prefixes)) {
             $batch_size = 30;
             $prefix_chunks = array_chunk($prefixes, $batch_size);
+            $failed_chunks = 0;
 
-            foreach ($prefix_chunks as $chunk) {
+            foreach ($prefix_chunks as $index => $chunk) {
                 $success = $this->purge_url_prefixes($chunk);
                 if (!$success) {
                     $prefixes_success = false;
-                    $this->debug_log('Failed to purge prefix batch');
-                    break;
+                    $failed_chunks++;
+                    $this->logger->error('API', 'Failed to purge prefix batch #' . ($index + 1) . ' of ' . count($prefix_chunks));
                 }
             }
 
-            $this->debug_log('Purged ' . count($prefixes) . ' URL prefixes: ' . ($prefixes_success ? 'success' : 'failed'));
+            if ($prefixes_success) {
+                $this->logger->debug('API', 'Successfully purged all ' . count($prefixes) . ' URL prefixes');
+            } else {
+                $this->logger->error('API', 'Failed to purge ' . $failed_chunks . ' out of ' . count($prefix_chunks) . ' prefix batches (' .
+                    count($prefixes) . ' total prefixes)');
+            }
         }
 
         return $files_success && $prefixes_success;
@@ -226,27 +262,31 @@ class CachemanAPI
     public function test_connection($zone_id, $api_key)
     {
         if (empty($zone_id) || empty($api_key)) {
-            return [
+            return array(
                 'success' => false,
                 'message' => __('Zone ID and API Key are required', 'zw-cacheman')
-            ];
+            );
         }
 
         $api_endpoint = 'https://api.cloudflare.com/client/v4/zones/' . $zone_id;
 
-        $response = wp_remote_get($api_endpoint, [
+        $this->logger->debug('API', 'Testing connection to Cloudflare API for zone ID: ' . $zone_id);
+
+        $response = wp_remote_get($api_endpoint, array(
             'timeout' => 15,
-            'headers' => [
+            'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
                 'Content-Type'  => 'application/json',
-            ]
-        ]);
+            )
+        ));
 
         if (is_wp_error($response)) {
-            return [
+            $error_msg = $response->get_error_message();
+            $this->logger->error('API', 'Connection test failed with WP error: ' . $error_msg);
+            return array(
                 'success' => false,
-                'message' => $response->get_error_message()
-            ];
+                'message' => $error_msg
+            );
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
@@ -257,24 +297,39 @@ class CachemanAPI
             $zone_name = isset($body_json['result']['name']) ? $body_json['result']['name'] : 'unknown';
             $plan_name = isset($body_json['result']['plan']['name']) ? $body_json['result']['plan']['name'] : 'unknown';
 
-            return [
+            $this->logger->debug('API', 'Connection test successful. Zone: ' . $zone_name . ', Plan: ' . $plan_name);
+
+            return array(
                 'success' => true,
-                /* translators: %1$s: Cloudflare zone name, %2$s: Cloudflare plan name */
-                'message' => sprintf(__('Connected to zone: %1$s (Plan: %2$s)', 'zw-cacheman'), $zone_name, $plan_name),
-                'data' => [
+                'message' => sprintf(
+                    /* translators: %1$s: Cloudflare zone name, %2$s: Cloudflare plan name */
+                    __('Connected to zone: %1$s (Plan: %2$s)', 'zw-cacheman'),
+                    $zone_name,
+                    $plan_name
+                ),
+                'data' => array(
                     'zone_name' => $zone_name,
                     'plan_name' => $plan_name
-                ]
-            ];
+                )
+            );
         } else {
-            $error = isset($body_json['errors'][0]['message'])
-                ? $body_json['errors'][0]['message']
-                /* translators: %d: HTTP response code */
-                : sprintf(__('Unknown error (HTTP code: %d)', 'zw-cacheman'), $response_code);
-            return [
+            $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error';
+            $error_code = isset($body_json['errors'][0]['code']) ? $body_json['errors'][0]['code'] : 'Unknown code';
+
+            $message = sprintf(
+                /* translators: %1$d: HTTP response code, %2$s: API error code, %3$s: Error message */
+                __('HTTP code: %1$d, API code: %2$s, Message: %3$s', 'zw-cacheman'),
+                $response_code,
+                $error_code,
+                $error
+            );
+
+            $this->logger->error('API', 'Connection test failed: ' . $message);
+
+            return array(
                 'success' => false,
-                'message' => $error
-            ];
+                'message' => $message
+            );
         }
     }
 }

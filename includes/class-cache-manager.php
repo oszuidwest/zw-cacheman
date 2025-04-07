@@ -25,15 +25,24 @@ class CachemanManager
     private $url_delver;
 
     /**
+     * Logger instance
+     *
+     * @var CachemanLogger
+     */
+    private $logger;
+
+    /**
      * Constructor
      *
      * @param CachemanAPI       $api       The API handler instance.
      * @param CachemanUrlDelver $url_delver The URL delver instance.
+     * @param CachemanLogger    $logger     The logger instance.
      */
-    public function __construct($api, $url_delver)
+    public function __construct($api, $url_delver, $logger)
     {
         $this->api = $api;
         $this->url_delver = $url_delver;
+        $this->logger = $logger;
 
         // Hook into post status transitions
         add_action('transition_post_status', [$this, 'handle_post_status_change'], 10, 3);
@@ -44,21 +53,7 @@ class CachemanManager
         // Check if cron is scheduled
         if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
             wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
-            $this->debug_log('Scheduled missing cron job.');
-        }
-    }
-
-    /**
-     * Debug logging
-     *
-     * @param string $message The message to log.
-     * @return void
-     */
-    public function debug_log($message)
-    {
-        $settings = get_option(ZW_CACHEMAN_SETTINGS, []);
-        if (!empty($settings['debug_mode'])) {
-            error_log('[ZW Cacheman] ' . $message);
+            $this->logger->debug('Manager', 'Scheduled missing cron job');
         }
     }
 
@@ -77,17 +72,33 @@ class CachemanManager
             return;
         }
 
-        $this->debug_log('Post ' . $post->ID . ' status changed from ' . $old_status . ' to ' . $new_status);
+        $this->logger->debug('Manager', 'Post ' . $post->ID . ' (' . $post->post_title . ') status changed from ' . $old_status . ' to ' . $new_status);
 
         // Only process on publish/unpublish
         if ('publish' === $new_status || 'publish' === $old_status) {
             // High priority purge items to process immediately
             $high_priority_items = $this->url_delver->get_high_priority_purge_items($post);
-            $this->api->process_purge_items($high_priority_items);
+
+            if (!empty($high_priority_items)) {
+                $this->logger->debug('Manager', 'Processing ' . count($high_priority_items) . ' high priority purge items for post ID ' . $post->ID);
+                $result = $this->api->process_purge_items($high_priority_items);
+
+                if (!$result) {
+                    $this->logger->error('Manager', 'Failed to process high priority purge items for post ID ' . $post->ID);
+                }
+            } else {
+                $this->logger->debug('Manager', 'No high priority purge items found for post ID ' . $post->ID);
+            }
 
             // Queue low priority items for later processing
             $low_priority_items = $this->url_delver->get_low_priority_purge_items($post);
-            $this->queue_purge_items($low_priority_items);
+
+            if (!empty($low_priority_items)) {
+                $this->logger->debug('Manager', 'Queueing ' . count($low_priority_items) . ' low priority purge items for post ID ' . $post->ID);
+                $this->queue_purge_items($low_priority_items);
+            } else {
+                $this->logger->debug('Manager', 'No low priority purge items found for post ID ' . $post->ID);
+            }
         }
     }
 
@@ -127,9 +138,10 @@ class CachemanManager
             }
         }
 
-        update_option(ZW_CACHEMAN_QUEUE, $all_items);
+        $added_count = count($all_items) - count($existing_items);
+        $this->logger->debug('Manager', 'Added ' . $added_count . ' new purge items to queue. Total in queue: ' . count($all_items));
 
-        $this->debug_log('Added ' . count($purge_items) . ' purge items to queue. Total in queue: ' . count($all_items));
+        update_option(ZW_CACHEMAN_QUEUE, $all_items);
     }
 
     /**
@@ -141,7 +153,7 @@ class CachemanManager
     {
         $queue = get_option(ZW_CACHEMAN_QUEUE, []);
         if (empty($queue)) {
-            $this->debug_log('Queue is empty. Nothing to process.');
+            $this->logger->debug('Manager', 'Queue is empty. Nothing to process.');
             return;
         }
 
@@ -152,7 +164,7 @@ class CachemanManager
         $items_to_process = array_slice($queue, 0, $batch_size);
         $remaining_items = array_slice($queue, $batch_size);
 
-        $this->debug_log('Processing ' . count($items_to_process) . ' items from queue');
+        $this->logger->debug('Manager', 'Processing ' . count($items_to_process) . ' items from queue (' . count($remaining_items) . ' items will remain)');
 
         // Process the batch using the API's process_purge_items method
         $success = $this->api->process_purge_items($items_to_process);
@@ -160,15 +172,15 @@ class CachemanManager
         if ($success) {
             // Update the queue with remaining items
             update_option(ZW_CACHEMAN_QUEUE, $remaining_items);
-            $this->debug_log('Successfully processed batch. ' . count($remaining_items) . ' items remaining in queue.');
+            $this->logger->debug('Manager', 'Successfully processed batch. ' . count($remaining_items) . ' items remaining in queue.');
         } else {
-            $this->debug_log('Failed to process batch. Will retry next run.');
+            $this->logger->error('Manager', 'Failed to process batch of ' . count($items_to_process) . ' items. Will retry next run.');
         }
 
         // Ensure WP-Cron is still scheduled
         if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
             wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
-            $this->debug_log('Re-scheduled missing cron job.');
+            $this->logger->debug('Manager', 'Re-scheduled missing cron job.');
         }
     }
 }
