@@ -85,11 +85,6 @@ Simultaneously, the plugin queues these related URLs for batch processing:
    - `https://sportsgazette.com/wp-json/wp/v2/users/42/` (Author endpoint)
    - All taxonomy collection endpoints
 
-6. **Post listings filtered by taxonomy** (as URL prefixes):
-   - `https://sportsgazette.com/wp-json/wp/v2/posts?categories=5`
-   - `https://sportsgazette.com/wp-json/wp/v2/posts?tags=12`
-   - `https://sportsgazette.com/wp-json/wp/v2/posts?regions=3`
-
 ### How the Queue Processing Works
 
 1. The plugin adds all these URLs to a queue, removing any duplicates
