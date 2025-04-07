@@ -1,111 +1,139 @@
 # ZuidWest Cache Manager
 
-A WordPress plugin that efficiently manages Cloudflare cache purging for websites. When content is published or updated, it immediately purges high-priority URLs and queues additional URLs for batch processing via WP-Cron.
+A WordPress plugin for efficient Cloudflare cache management. Immediately purges high-priority URLs and queues others for batch processing via WP-Cron when content changes.
 
 ## Features
 
-- **Smart URL Detection**: Automatically detects and purges both web URLs and their corresponding REST API endpoints
-- **Priority-Based Processing**: Immediately purges critical URLs and queues less important ones for later processing
-- **Batch Processing**: Processes queued URLs in configurable batches to avoid API rate limits
-- **Admin Interface**: Simple settings page with connection testing, queue management, and debug options
-- **WP-Cron Integration**: Uses WordPress's built-in scheduling system for reliable processing
+- **Smart URL Detection**: Automatically purges web URLs and REST API endpoints
+- **Priority-Based Processing**: Immediate critical purges, queued less-critical URLs
+- **Batch Processing**: Configurable batches to avoid API rate limits
+- **Admin Interface**: Connection testing, queue management, debugging
+- **WP-Cron Integration**: Reliable scheduled processing
+- **URL Prefix Support**: Efficient cache clearing (v1.1+)
+- **Enhanced REST API Support**: Improved endpoint detection (v1.1+)
 
 ## How It Works
 
 ### Immediate Purging (High Priority)
-
-When a post's status changes (published or updated), the plugin immediately purges:
-- The post's permalink
-- The site's homepage
-- The site's feed
-- The post type archive page
-- Corresponding REST API endpoints for each of these URLs
+When content changes, immediately purges post permalink, homepage, site feed, post type archive, and related API endpoints.
 
 ### Queued Purging (Low Priority)
+Collects and batch-processes taxonomy archives, author archives, API endpoints, and URL prefixes.
 
-The plugin also collects and queues:
-- Category/taxonomy archive URLs related to the post
-- Author archive URLs
-- REST API endpoints for taxonomies and authors
+## Example: How It Handles a Post with Multiple Taxonomies
 
-These URLs are processed in batches via WP-Cron, running every minute.
+When a WordPress post with multiple taxonomies is published or updated, the plugin intelligently manages Cloudflare cache purging in a multi-tiered approach. Here's a specific example scenario:
 
-## Installation
+Let's say you have a sports news website (sportsgazette.com) and you publish a new article titled "Local Sports Team Wins Championship" with:
 
-1. Upload the `zw-cacheman` directory to your `/wp-content/plugins/` directory
-2. Activate the plugin through the 'Plugins' menu in WordPress
-3. Go to Settings → ZuidWest Cache to configure your Cloudflare API credentials
+- Post type: `post`
+- Categories: "Sports", "Local News"
+- Tags: "Championship", "Basketball", "City Events"
+- Custom taxonomy: "Regions" with term "Downtown"
 
-## Configuration
+### Immediate High-Priority Purging
 
-1. **Zone ID**: Your Cloudflare Zone ID (found in your Cloudflare dashboard)
-2. **API Key**: Your Cloudflare API key with cache purging permissions
-3. **Batch Size**: Number of URLs to process in each WP-Cron batch (default: 30)
-4. **Debug Mode**: Enable detailed logging for troubleshooting
+When you hit "Publish", the plugin immediately purges these URLs:
 
-## Usage
+1. **The article permalink**:
+   - `https://sportsgazette.com/local-sports-team-wins-championship/`
 
-Once configured, the plugin works automatically:
+2. **Homepage**:
+   - `https://sportsgazette.com/`
 
-- When you publish or update content, high-priority URLs are purged immediately
-- Less critical URLs are added to a queue for processing
-- The queue is processed every minute by WP-Cron
-- You can view queue status and manually process or clear the queue from the settings page
+3. **Post type archive**:
+   - `https://sportsgazette.com/blog/` or `https://sportsgazette.com/news/` (depends on your setup)
 
-## Debugging
+4. **REST API endpoints** (direct access):
+   - `https://sportsgazette.com/wp-json/wp/v2/posts/1234/` (article API endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/posts/` (posts collection)
+   - `https://sportsgazette.com/wp-json/` (API root)
 
-When Debug Mode is enabled in the plugin settings:
+These high-priority purges happen immediately to ensure the most critical URLs are fresh.
 
-1. **Log Location**: Debug logs are written to the standard PHP error log
-   - On most servers, this is located at `/var/log/apache2/error.log` or `/var/log/nginx/error.log`
-   - If using a managed WordPress host, check their documentation for log file locations
-   - You can also view logs through your hosting control panel if available
+### Queued Low-Priority Purging
 
-2. **Log Format**: All logs are prefixed with `[ZW Cacheman]` or `[ZW Cacheman API]` for easy filtering
+Simultaneously, the plugin queues these related URLs for batch processing:
 
-3. **What Gets Logged**:
-   - URL purging attempts and results
-   - API request details and responses
-   - Queue processing information
-   - Errors or connection issues
+1. **Category archives**:
+   - `https://sportsgazette.com/category/sports/` (as URL prefix)
+   - `https://sportsgazette.com/category/local-news/` (as URL prefix)
+   - `https://sportsgazette.com/category/sports/feed/` (as exact URL)
+   - `https://sportsgazette.com/category/local-news/feed/` (as exact URL)
 
-## Requirements
+2. **Tag archives**:
+   - `https://sportsgazette.com/tag/championship/` (as URL prefix)
+   - `https://sportsgazette.com/tag/basketball/` (as URL prefix)
+   - `https://sportsgazette.com/tag/city-events/` (as URL prefix)
+   - Related tag feeds (as exact URLs)
 
-- WordPress 5.0 or higher
-- PHP 7.2 or higher
-- Active Cloudflare account with API access
-- Properly configured WP-Cron (or alternative cron implementation)
+3. **Custom taxonomy archives**:
+   - `https://sportsgazette.com/region/downtown/` (as URL prefix)
+   - `https://sportsgazette.com/region/downtown/feed/` (as exact URL)
+
+4. **Author archive**:
+   - `https://sportsgazette.com/author/writer-name/` (as URL prefix)
+   - `https://sportsgazette.com/author/writer-name/feed/` (as exact URL)
+
+5. **REST API related endpoints**:
+   - `https://sportsgazette.com/wp-json/wp/v2/categories/5/` (Sports category endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/categories/7/` (Local News category endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/tags/12/` (Championship tag endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/tags/15/` (Basketball tag endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/tags/22/` (City Events tag endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/regions/3/` (Downtown region endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/users/42/` (Author endpoint)
+   - All taxonomy collection endpoints
+
+6. **Post listings filtered by taxonomy** (as URL prefixes):
+   - `https://sportsgazette.com/wp-json/wp/v2/posts?categories=5`
+   - `https://sportsgazette.com/wp-json/wp/v2/posts?tags=12`
+   - `https://sportsgazette.com/wp-json/wp/v2/posts?regions=3`
+
+### How the Queue Processing Works
+
+1. The plugin adds all these URLs to a queue, removing any duplicates
+2. Every minute, WP-Cron triggers the queue processing
+3. The plugin takes a batch (default 30 URLs) from the front of the queue
+4. It sends these URLs to Cloudflare's API for purging
+5. If successful, these URLs are removed from the queue
+6. The process continues until the queue is empty
+
+### The Benefit of URL Prefix Purging
+
+For taxonomy archives, the plugin uses Cloudflare's URL prefix purging (added in v1.1). This is especially valuable for handling paginated pages. For example, when purging `sportsgazette.com/category/sports/`, it also automatically clears:
+
+- `sportsgazette.com/category/sports/page/2/`
+- `sportsgazette.com/category/sports/page/3/`
+- `sportsgazette.com/category/sports/page/4/`
+- And all other pagination pages
+
+Without URL prefix purging, you would need to individually purge each pagination URL, which is inefficient and might miss some pages. The prefix approach ensures that all paginated archive pages are properly refreshed when content changes, improving both cache efficiency and ensuring visitors always see up-to-date content.
+
+## Installation & Configuration
+
+1. Upload to `/wp-content/plugins/` directory and activate
+2. Configure under Settings → ZuidWest Cache:
+   - **Zone ID**: Cloudflare Zone ID
+   - **API Key**: Cloudflare API key with cache purging permissions
+   - **Batch Size**: URLs per batch (default: 30)
+   - **Debug Mode**: Enable logging
 
 ## Troubleshooting
 
-If the plugin isn't working as expected:
+- **Connection Issues**: Test connection on settings page, verify API credentials
+- **Queue Problems**: Check queue processing, ensure WP-Cron is functional
+- **Debug Logs**: Enable Debug Mode, check PHP error log for "[ZW Cacheman]" entries
+- **Common Issues**: Firewall blocking API, WP-Cron configuration, additional caching layers
 
-1. **Check Connection Status**:
-   - Use the "Test Connection" button on the settings page
-   - Verify your Cloudflare API credentials are correct
+## Requirements
 
-2. **Monitor the Queue**:
-   - Check that the queue count decreases over time
-   - If the queue is growing but not processing, try the "Force Process Queue Now" button
+- WordPress 6.7+
+- PHP 8.2+
+- Active Cloudflare account with API access
+- Properly configured WP-Cron
 
-3. **Verify WP-Cron**:
-   - Ensure WordPress cron is functioning (use a plugin like WP Crontrol to verify)
-   - Check if the "Next scheduled run" time is showing correctly on the settings page
+## Support & License
 
-4. **Review Debug Logs**:
-   - Enable Debug Mode in settings
-   - Check your server's PHP error log for entries starting with "[ZW Cacheman]"
-   - Look for API errors or connection issues
-
-5. **Common Issues**:
-   - **API Connection Failures**: Check your firewall settings and make sure outbound requests to Cloudflare API are allowed
-   - **Queue Not Processing**: Your server might be blocking WP-Cron; consider setting up a system cron job
-   - **Inconsistent Cache Clearing**: Some CDN or hosting configurations may add additional caching layers
-
-## Support
-
-For questions, bug reports, or feature requests, open an issue in the plugin repository.
-
-## License
-
-This plugin is released under the GPLv3 license.
+For support, open an issue in the plugin repository.
+Released under GPLv3 license.

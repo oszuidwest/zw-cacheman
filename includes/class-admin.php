@@ -317,8 +317,8 @@ class CachemanAdmin
             
             <h2><?php echo esc_html__('Queue Status', 'zw-cacheman'); ?></h2>
             <p><?php
-                /* translators: %d: Number of URLs in queue */
-                printf(esc_html__('URLs currently in queue: %d', 'zw-cacheman'), $queue_count);
+                /* translators: %d: Number of items in queue */
+                printf(esc_html__('Items currently in queue: %d', 'zw-cacheman'), $queue_count);
             ?></p>
             
             <?php if ($queue_count > 0) : ?>
@@ -331,11 +331,15 @@ class CachemanAdmin
                 <br>
                 
                 <details>
-                    <summary><?php echo esc_html__('Show queued URLs', 'zw-cacheman'); ?></summary>
+                    <summary><?php echo esc_html__('Show queued items', 'zw-cacheman'); ?></summary>
                     <div style="max-height: 200px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #f8f8f8; border: 1px solid #ddd;">
                         <ol>
-                            <?php foreach ($queue as $url) : ?>
-                                <li><?php echo esc_url($url); ?></li>
+                            <?php foreach ($queue as $item) : ?>
+                                <li>
+                                    <?php
+                                    echo '<strong>' . esc_html($item['type']) . '</strong>: ' . esc_url($item['url']);
+                                    ?>
+                                </li>
                             <?php endforeach; ?>
                         </ol>
                     </div>
