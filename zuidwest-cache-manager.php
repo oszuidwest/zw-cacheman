@@ -1,8 +1,9 @@
 <?php
+
 /**
  * Plugin Name: ZuidWest Cache Manager
  * Description: Purges Cloudflare cache for high-priority URLs when posts are published or edited. It also queues related taxonomy URLs for low-priority batch processing via WP-Cron.
- * Version: 1.2
+ * Version: 1.2.1
  * Author: Streekomroep ZuidWest
  * License: GPLv3
  * Text Domain: zw-cacheman

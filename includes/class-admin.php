@@ -313,18 +313,18 @@ class CachemanAdmin
             
             <h2><?php echo esc_html__('WP-Cron Status', 'zw-cacheman'); ?></h2>
             <?php if ($next_run) : ?>
-                <p>
-                    <?php
-                    printf(
-                        /* translators: 1: Formatted date, 2: Number of seconds until next run */
-                        esc_html__('Next scheduled run: %1$s (in %2$d seconds)', 'zw-cacheman'),
-                        date_i18n('Y-m-d H:i:s', $next_run),
-                        $next_run - time()
-                    );
-                    ?>
-                </p>
+    <p>
+                <?php
+                printf(
+            /* translators: 1: Formatted date, 2: Number of seconds until next run */
+                    esc_html__('Next scheduled run: %1$s (in %2$d seconds)', 'zw-cacheman'),
+                    date_i18n('Y-m-d H:i:s', $next_run),
+                    $next_run - time()
+                );
+                ?>
+    </p>
             <?php else : ?>
-                <p class="notice notice-error"><?php echo esc_html__('WP-Cron job is not scheduled! This will prevent automatic processing.', 'zw-cacheman'); ?></p>
+    <p class="notice notice-error"><?php echo esc_html__('WP-Cron job is not scheduled! This will prevent automatic processing.', 'zw-cacheman'); ?></p>
             <?php endif; ?>
             
             <form method="post" action="">

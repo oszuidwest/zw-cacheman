@@ -1,4 +1,5 @@
 <?php
+
 /**
  * URL validation and cleaning functionality
  */

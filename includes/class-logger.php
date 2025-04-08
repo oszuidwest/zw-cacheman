@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Logger functionality for ZuidWest Cache Manager
  */
@@ -67,8 +68,8 @@ class CachemanLogger
             return;
         }
 
-        $filename = $this->log_dir . 'debug-' . date('Y-m-d') . '.log';
-        $timestamp = date('Y-m-d H:i:s');
+        $filename = $this->log_dir . 'debug-' . current_time('Y-m-d') . '.log';
+        $timestamp = current_time('Y-m-d H:i:s');
         $log_message = '[' . $timestamp . '] [' . $source . '] ' . $message . PHP_EOL;
 
         // Append to the log file
@@ -89,8 +90,8 @@ class CachemanLogger
 
         // Also log errors to our debug log if debug mode is enabled
         if ($this->debug_mode) {
-            $filename = $this->log_dir . 'debug-' . date('Y-m-d') . '.log';
-            $timestamp = date('Y-m-d H:i:s');
+            $filename = $this->log_dir . 'debug-' . current_time('Y-m-d') . '.log';
+            $timestamp = current_time('Y-m-d H:i:s');
             $log_message = '[' . $timestamp . '] [ERROR] [' . $source . '] ' . $message . PHP_EOL;
 
             // Append to the log file
@@ -105,7 +106,7 @@ class CachemanLogger
      */
     public function get_current_log_path()
     {
-        return $this->log_dir . 'debug-' . date('Y-m-d') . '.log';
+        return $this->log_dir . 'debug-' . current_time('Y-m-d') . '.log';
     }
 
     /**

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Cloudflare API integration class
  */
