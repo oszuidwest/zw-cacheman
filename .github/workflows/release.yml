@@ -102,19 +102,24 @@ jobs:
             --exclude '*.log' \
             --exclude '.gitignore'
 
+      - name: Set Plugin Name
+        run: |
+          PLUGIN_NAME="zuidwest-cache-manager"
+          echo "PLUGIN_NAME=$PLUGIN_NAME" >> $GITHUB_ENV
+
       - name: Create Zip Package
         run: |
           cd release
-          zip -r ../zuidwest-cacheman-${{ env.VERSION }}.zip ./*
+          zip -r "../${{ env.PLUGIN_NAME }}.zip" ./*
           cd ..
-          ls -la zuidwest-cacheman-${{ env.VERSION }}.zip
+          ls -la "${{ env.PLUGIN_NAME }}.zip"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ env.VERSION }} \
-            zuidwest-cacheman-${{ env.VERSION }}.zip \
+            "${{ env.PLUGIN_NAME }}.zip" \
             --title "${{ env.VERSION }}" \
             --notes "Automated release for version ${{ env.VERSION }}"
 
