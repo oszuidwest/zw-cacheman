@@ -128,13 +128,22 @@ class CachemanUrlDelver
     {
         $purge_items = [];
 
-        // Post type archive (as prefix - low priority)
-        $archive_link = get_post_type_archive_link($post->post_type);
-        if ($archive_link) {
-            $item = $this->url_helper->create_purge_item($archive_link, 'prefix');
-            if ($item) {
-                $purge_items[] = $item;
+        // Get post type object to check if it has a proper archive
+        $post_type_obj = get_post_type_object($post->post_type);
+
+        // Check if this post type has a real archive
+        if ($post_type_obj && $post_type_obj->has_archive) {
+            // Post type archive (as prefix - low priority)
+            $archive_link = get_post_type_archive_link($post->post_type);
+            if ($archive_link) {
+                $this->logger->debug('URL Delver', 'Adding dedicated archive link as prefix: ' . $archive_link);
+                $item = $this->url_helper->create_purge_item($archive_link, 'prefix');
+                if ($item) {
+                    $purge_items[] = $item;
+                }
             }
+        } else {
+            $this->logger->debug('URL Delver', 'Post type "' . $post->post_type . '" has no dedicated archive, skipping archive purge');
         }
 
         // Feed link (as low priority item)
