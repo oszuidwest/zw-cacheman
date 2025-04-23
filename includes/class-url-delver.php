@@ -241,7 +241,6 @@ class CachemanUrlDelver
             if (!is_wp_error($parent_term)) {
                 $parent_link = get_term_link($parent_term);
                 if (!is_wp_error($parent_link)) {
-                    $urls[] = ['url' => $parent_link, 'type' => 'file'];
                     $urls[] = ['url' => $parent_link, 'type' => 'prefix'];
                 }
             }
