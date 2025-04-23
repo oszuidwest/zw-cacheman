@@ -10,7 +10,7 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 - **Admin Interface**: Connection testing, queue management, debugging
 - **WP-Cron Integration**: Reliable scheduled processing
 - **URL Prefix Support**: Efficient cache clearing (v1.1+)
-- **Enhanced REST API Support**: Improved endpoint detection (v1.1+)
+- **Taxonomy Term Handling**: Purges cache when taxonomy terms are created, edited, or deleted (v1.3+)
 
 ## How It Works
 
@@ -20,8 +20,12 @@ When content changes, immediately purges post permalink, homepage, site feed, po
 ### Queued Purging (Low Priority)
 Collects and batch-processes taxonomy archives, author archives, API endpoints, and URL prefixes.
 
-## Example: How It Handles a Post with Multiple Taxonomies
+### Taxonomy Term Handling
+When taxonomy terms (categories, tags, custom taxonomies) are created, updated, or deleted, automatically purges their archive pages, parent terms, and related endpoints.
 
+## Example: How It Handles Content Changes
+
+### Post Updates
 When a WordPress post with multiple taxonomies is published or updated, the plugin intelligently manages Cloudflare cache purging in a multi-tiered approach. Here's a specific example scenario:
 
 Let's say you have a sports news website (sportsgazette.com) and you publish a new article titled "Local Sports Team Wins Championship" with:
@@ -31,7 +35,7 @@ Let's say you have a sports news website (sportsgazette.com) and you publish a n
 - Tags: "Championship", "Basketball", "City Events"
 - Custom taxonomy: "Regions" with term "Downtown"
 
-### Immediate High-Priority Purging
+#### Immediate High-Priority Purging
 
 When you hit "Publish", the plugin immediately purges these URLs:
 
@@ -51,7 +55,7 @@ When you hit "Publish", the plugin immediately purges these URLs:
 
 These high-priority purges happen immediately to ensure the most critical URLs are fresh.
 
-### Queued Low-Priority Purging
+#### Queued Low-Priority Purging
 
 Simultaneously, the plugin queues these related URLs for batch processing:
 
@@ -85,9 +89,42 @@ Simultaneously, the plugin queues these related URLs for batch processing:
    - `https://sportsgazette.com/wp-json/wp/v2/users/42/` (Author endpoint)
    - All taxonomy collection endpoints
 
+### Taxonomy Term Updates
+
+When a taxonomy term is created, edited, or deleted, the plugin performs similar intelligent cache purging. For example, if you update a category called "Sports":
+
+#### Immediate High-Priority Purging
+
+1. **The term archive page**:
+   - `https://sportsgazette.com/category/sports/` (as exact URL)
+
+2. **Homepage**:
+   - `https://sportsgazette.com/`
+
+3. **REST API endpoints**:
+   - `https://sportsgazette.com/wp-json/wp/v2/categories/5/` (Sports category endpoint)
+   - `https://sportsgazette.com/wp-json/wp/v2/categories/` (Categories collection)
+   - `https://sportsgazette.com/wp-json/wp/v2/taxonomies/` (Taxonomies endpoint)
+   - `https://sportsgazette.com/wp-json/` (API root)
+
+#### Queued Low-Priority Purging
+
+1. **Term archive page**:
+   - `https://sportsgazette.com/category/sports/` (as URL prefix, to catch pagination)
+
+2. **Term feeds**:
+   - `https://sportsgazette.com/category/sports/feed/` (as exact URL)
+
+3. **Parent term archives** (if applicable):
+   - `https://sportsgazette.com/category/parent-category/` (as both file and prefix)
+   - `https://sportsgazette.com/category/parent-category/feed/` (as exact URL)
+
+4. **Site-wide feeds**:
+   - `https://sportsgazette.com/feed/` (as exact URL)
+
 ### How the Queue Processing Works
 
-1. The plugin adds all these URLs to a queue, removing any duplicates
+1. The plugin adds all URLs to a queue, removing any duplicates
 2. Every minute, WP-Cron triggers the queue processing
 3. The plugin takes a batch (default 30 URLs) from the front of the queue
 4. It sends these URLs to Cloudflare's API for purging
@@ -96,7 +133,7 @@ Simultaneously, the plugin queues these related URLs for batch processing:
 
 ### The Benefit of URL Prefix Purging
 
-For taxonomy archives, the plugin uses Cloudflare's URL prefix purging (added in v1.1). This is especially valuable for handling paginated pages. For example, when purging `sportsgazette.com/category/sports/`, it also automatically clears:
+For archives, the plugin uses Cloudflare's URL prefix purging. This is especially valuable for handling paginated pages. For example, when purging `sportsgazette.com/category/sports/`, it also automatically clears:
 
 - `sportsgazette.com/category/sports/page/2/`
 - `sportsgazette.com/category/sports/page/3/`
@@ -107,12 +144,18 @@ Without URL prefix purging, you would need to individually purge each pagination
 
 ## Installation & Configuration
 
-1. Upload to `/wp-content/plugins/` directory and activate
-2. Configure under Settings → ZuidWest Cache:
-   - **Zone ID**: Cloudflare Zone ID
-   - **API Key**: Cloudflare API key with cache purging permissions
-   - **Batch Size**: URLs per batch (default: 30)
-   - **Debug Mode**: Enable logging
+### Download the latest release
+1. Download the latest release ZIP file from the [Releases page](https://github.com/oszuidwest/zw-cacheman/releases)
+2. In your WordPress admin, go to Plugins → Add New → Upload Plugin
+3. Choose the downloaded ZIP file and click "Install Now"
+4. Activate the plugin after installation completes
+
+### Configuration
+Configure the plugin under Settings → ZuidWest Cache:
+- **Zone ID**: Cloudflare Zone ID
+- **API Key**: Cloudflare API key with cache purging permissions
+- **Batch Size**: URLs per batch (default: 30)
+- **Debug Mode**: Enable logging
 
 ## Troubleshooting
 
