@@ -170,6 +170,28 @@ class CachemanUrlDelver
     }
 
     /**
+     * Get purge items for a deleted post
+     *
+     * @param int      $post_id Post ID.
+     * @param \WP_Post $post    Post object.
+     * @return array List of purge items.
+     */
+    public function get_deleted_post_purge_items($post_id, $post)
+    {
+        // For deleted posts, we'll combine both high and low priority URLs
+        // since we want to purge everything related to this post immediately
+        $high_priority_items = $this->get_high_priority_purge_items($post);
+        $low_priority_items = $this->get_low_priority_purge_items($post);
+
+        // Combine both sets of purge items (deduplication is handled by create_purge_items)
+        $all_items = array_merge($high_priority_items, $low_priority_items);
+
+        $this->logger->debug('URL Delver', 'Generated ' . count($all_items) . ' purge items for deleted post ID ' . $post_id);
+
+        return $all_items;
+    }
+
+    /**
      * Get high priority purge items for a term
      *
      * @param \WP_Term $term     Term object.
