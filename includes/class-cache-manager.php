@@ -48,6 +48,11 @@ class CachemanManager
         // Hook into post status transitions
         add_action('transition_post_status', [$this, 'handle_post_status_change'], 10, 3);
 
+        // Hook into taxonomy term changes
+        add_action('created_term', [$this, 'handle_term_change'], 10, 3);
+        add_action('edited_term', [$this, 'handle_term_change'], 10, 3);
+        add_action('delete_term', [$this, 'handle_term_deletion'], 10, 3);
+
         // Set up cron handler
         add_action(ZW_CACHEMAN_CRON_HOOK, [$this, 'process_queue']);
 
@@ -100,6 +105,77 @@ class CachemanManager
             } else {
                 $this->logger->debug('Manager', 'No low priority purge items found for post ID ' . $post->ID);
             }
+        }
+    }
+
+    /**
+     * Handle taxonomy term changes (create/edit)
+     *
+     * @param int    $term_id  Term ID.
+     * @param int    $tt_id    Term taxonomy ID.
+     * @param string $taxonomy Taxonomy slug.
+     * @return void
+     */
+    public function handle_term_change($term_id, $tt_id, $taxonomy)
+    {
+        $this->logger->debug('Manager', 'Term ' . $term_id . ' in taxonomy ' . $taxonomy . ' was created or updated');
+
+        // Get the term
+        $term = get_term($term_id, $taxonomy);
+        if (is_wp_error($term)) {
+            $this->logger->error('Manager', 'Failed to get term: ' . $term->get_error_message());
+            return;
+        }
+
+        // High priority purge items to process immediately
+        $high_priority_items = $this->url_delver->get_high_priority_term_purge_items($term, $taxonomy);
+
+        if (!empty($high_priority_items)) {
+            $this->logger->debug('Manager', 'Processing ' . count($high_priority_items) . ' high priority purge items for term ID ' . $term_id);
+            $result = $this->api->process_purge_items($high_priority_items);
+
+            if (!$result) {
+                $this->logger->error('Manager', 'Failed to process high priority purge items for term ID ' . $term_id);
+            }
+        } else {
+            $this->logger->debug('Manager', 'No high priority purge items found for term ID ' . $term_id);
+        }
+
+        // Queue low priority items for later processing
+        $low_priority_items = $this->url_delver->get_low_priority_term_purge_items($term, $taxonomy);
+
+        if (!empty($low_priority_items)) {
+            $this->logger->debug('Manager', 'Queueing ' . count($low_priority_items) . ' low priority purge items for term ID ' . $term_id);
+            $this->queue_purge_items($low_priority_items);
+        } else {
+            $this->logger->debug('Manager', 'No low priority purge items found for term ID ' . $term_id);
+        }
+    }
+
+    /**
+     * Handle taxonomy term deletion
+     *
+     * @param int    $term_id  Term ID.
+     * @param int    $tt_id    Term taxonomy ID.
+     * @param string $taxonomy Taxonomy slug.
+     * @return void
+     */
+    public function handle_term_deletion($term_id, $tt_id, $taxonomy)
+    {
+        $this->logger->debug('Manager', 'Term ' . $term_id . ' in taxonomy ' . $taxonomy . ' was deleted');
+
+        // Get purge items for a deleted term
+        $purge_items = $this->url_delver->get_deleted_term_purge_items($term_id, $taxonomy);
+
+        if (!empty($purge_items)) {
+            $this->logger->debug('Manager', 'Processing ' . count($purge_items) . ' purge items for deleted term ID ' . $term_id);
+            $result = $this->api->process_purge_items($purge_items);
+
+            if (!$result) {
+                $this->logger->error('Manager', 'Failed to process purge items for deleted term ID ' . $term_id);
+            }
+        } else {
+            $this->logger->debug('Manager', 'No purge items found for deleted term ID ' . $term_id);
         }
     }
 
