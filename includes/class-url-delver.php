@@ -274,7 +274,7 @@ class CachemanUrlDelver
 
         // Taxonomy archive if available
         $tax_obj = get_taxonomy($taxonomy);
-        if ($tax_obj && !empty($tax_obj->rewrite) && !empty($tax_obj->rewrite['slug'])) {
+        if ($tax_obj && !empty($tax_obj->rewrite) && isset($tax_obj->rewrite['slug'])) {
             $tax_base = !empty($tax_obj->rewrite['slug']) ? $tax_obj->rewrite['slug'] : $taxonomy;
             $tax_archive = trailingslashit(get_home_url()) . $tax_base . '/';
 
