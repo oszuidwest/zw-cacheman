@@ -46,11 +46,32 @@ class CachemanUrlDelver
     public function get_high_priority_purge_items($post)
     {
         $urls = [];
+        // Log if we're working with a trashed post
+        if ($post->post_status === 'trash') {
+            $this->logger->debug('URL Delver', 'Working with tashed post ' . $post->ID . ', will try to resurrect original permalink');
 
-        // Post permalink
-        $permalink = get_permalink($post->ID);
-        if ($permalink) {
-            $urls[] = ['url' => $permalink, 'type' => 'file'];
+            // For trashed posts, skip current permalink and go straight to recovery
+            $clean_slug = preg_replace('/__trashed$/', '', $post->post_name);
+
+            // Only proceed if we actually have a trashed suffix
+            if ($clean_slug !== $post->post_name) {
+                // Simulate non-trashed post for permalink generation
+                $resurrected_post = clone $post;
+                $resurrected_post->post_name = $clean_slug;
+                $resurrected_post->post_status = 'publish';
+
+                // Get clean permalink
+                $clean_permalink = get_permalink($resurrected_post);
+                if ($clean_permalink) {
+                    $urls[] = ['url' => $clean_permalink, 'type' => 'file'];
+                }
+            }
+        } else {
+            // Only add the current permalink for non-trashed posts
+            $permalink = get_permalink($post->ID);
+            if ($permalink) {
+                $urls[] = ['url' => $permalink, 'type' => 'file'];
+            }
         }
 
         // Home URL
@@ -167,6 +188,28 @@ class CachemanUrlDelver
         $this->logger->debug('URL Delver', 'Generated ' . count($purge_items) . ' low priority purge items for post ID ' . $post->ID);
 
         return $purge_items;
+    }
+
+    /**
+     * Get purge items for a deleted post
+     *
+     * @param int      $post_id Post ID.
+     * @param \WP_Post $post    Post object.
+     * @return array List of purge items.
+     */
+    public function get_deleted_post_purge_items($post_id, $post)
+    {
+        // For deleted posts, we'll combine both high and low priority URLs
+        // since we want to purge everything related to this post immediately
+        $high_priority_items = $this->get_high_priority_purge_items($post);
+        $low_priority_items = $this->get_low_priority_purge_items($post);
+
+        // Combine both sets of purge items
+        $all_items = array_merge($high_priority_items, $low_priority_items);
+
+        $this->logger->debug('URL Delver', 'Generated ' . count($all_items) . ' purge items for deleted post ID ' . $post_id);
+
+        return $all_items;
     }
 
     /**

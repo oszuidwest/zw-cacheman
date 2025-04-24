@@ -48,6 +48,9 @@ class CachemanManager
         // Hook into post status transitions
         add_action('transition_post_status', [$this, 'handle_post_status_change'], 10, 3);
 
+        // Hook into post deletion
+        add_action('before_delete_post', [$this, 'handle_post_deletion'], 10, 2);
+
         // Hook into taxonomy term changes
         add_action('created_term', [$this, 'handle_term_change'], 10, 3);
         add_action('edited_term', [$this, 'handle_term_change'], 10, 3);
@@ -105,6 +108,37 @@ class CachemanManager
             } else {
                 $this->logger->debug('Manager', 'No low priority purge items found for post ID ' . $post->ID);
             }
+        }
+    }
+
+    /**
+     * Handle post deletion
+     *
+     * @param int      $post_id Post ID.
+     * @param \WP_Post $post    Post object.
+     * @return void
+     */
+    public function handle_post_deletion($post_id, $post)
+    {
+        // Skip if autosave or revision
+        if (wp_is_post_autosave($post) || wp_is_post_revision($post)) {
+            return;
+        }
+
+        $this->logger->debug('Manager', 'Post ' . $post_id . ' (' . $post->post_title . ') was deleted');
+
+        // Get purge items for a deleted post
+        $purge_items = $this->url_delver->get_deleted_post_purge_items($post_id, $post);
+
+        if (!empty($purge_items)) {
+            $this->logger->debug('Manager', 'Processing ' . count($purge_items) . ' purge items for deleted post ID ' . $post_id);
+            $result = $this->api->process_purge_items($purge_items);
+
+            if (!$result) {
+                $this->logger->error('Manager', 'Failed to process purge items for deleted post ID ' . $post_id);
+            }
+        } else {
+            $this->logger->debug('Manager', 'No purge items found for deleted post ID ' . $post_id);
         }
     }
 
