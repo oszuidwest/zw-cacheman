@@ -15,7 +15,7 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 ## How It Works
 
 ### Immediate Purging (High Priority)
-When content changes, immediately purges post permalink, homepage, site feed, post type archive, and related API endpoints.
+When content changes, immediately purges post permalink, homepage, site feed, post type archive, and related API endpoints. This happens when posts are published, edited, or deleted.
 
 ### Queued Purging (Low Priority)
 Collects and batch-processes taxonomy archives, author archives, API endpoints, and URL prefixes.
@@ -88,6 +88,18 @@ Simultaneously, the plugin queues these related URLs for batch processing:
    - `https://sportsgazette.com/wp-json/wp/v2/regions/3/` (Downtown region endpoint)
    - `https://sportsgazette.com/wp-json/wp/v2/users/42/` (Author endpoint)
    - All taxonomy collection endpoints
+
+### Post Deletion Handling
+
+When a post is deleted or moved to trash, the plugin handles cache purging intelligently:
+
+   - Identifies if a post has a trashed status
+   - Attempts to reconstruct the original permalink by removing "_trashed" suffix
+   - Purges the post's permalink from cache
+   - Purges related feeds and archives
+   - Cleans up any API endpoints related to the deleted post
+
+This ensures that when content is removed (whether temporarily or permanently), the cache is properly updated to reflect these changes.
 
 ### Taxonomy Term Updates
 
