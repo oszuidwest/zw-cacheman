@@ -477,6 +477,7 @@ class CachemanAdmin
                                         <span class="dashicons dashicons-list-view <?php echo $queue_count > 0 ? 'zw-cacheman-has-items' : 'zw-cacheman-empty'; ?>"></span>
                                         <?php
                                         if ($queue_count > 0) {
+                                            /* translators: %d: number of URLs in the queue */
                                             printf(
                                                 /* translators: %d: number of URLs in the queue */
                                                 esc_html(_n('%d URL pending', '%d URLs pending', $queue_count, 'zw-cacheman')),
