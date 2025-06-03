@@ -169,6 +169,18 @@ Configure the plugin under Settings → ZuidWest Cache:
 - **Batch Size**: URLs per batch (default: 30)
 - **Debug Mode**: Enable logging
 
+## Known Limitations
+
+### REST API URLs with Query Strings
+The plugin only purges base REST API URLs without query parameters. URLs like `/wp-json/wp/v2/posts?per_page=15&_fields=title,content` won't be automatically purged.
+
+**Solution**: Configure Cloudflare Cache Rules to ignore query strings for REST API endpoints.
+
+### Combined Taxonomy Feeds
+The plugin purges individual taxonomy feeds (e.g., `/regio/roosendaal/feed/`) but not combined feeds with comma-separated terms (e.g., `/regio/roosendaal,bergen-op-zoom/feed/`).
+
+**Solution**: Configure Cloudflare Cache Rules to handle these URL patterns appropriately.
+
 ## Troubleshooting
 
 - **Connection Issues**: Test connection on settings page, verify API credentials
