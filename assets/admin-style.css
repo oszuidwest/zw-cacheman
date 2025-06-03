@@ -1,0 +1,161 @@
+/**
+ * ZuidWest Cache Manager - Admin Styles
+ */
+
+/* Details/Summary Elements */
+.zw-cacheman-wrap details {
+    margin-bottom: 10px;
+}
+
+.zw-cacheman-wrap details summary {
+    cursor: pointer;
+    padding: 10px 15px;
+    background: #f1f1f1;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.zw-cacheman-wrap details summary:hover {
+    background: #e8e8e8;
+}
+
+/* Queue Details */
+.zw-cacheman-wrap details.zw-cacheman-queue summary {
+    border-radius: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.zw-cacheman-wrap details.zw-cacheman-queue[open] summary {
+    border-radius: 3px 3px 0 0;
+}
+
+.zw-cacheman-wrap details.zw-cacheman-queue .zw-cacheman-details-content {
+    background: #f8f8f8;
+    border: 1px solid #e1e1e1;
+    border-top: 0;
+    border-radius: 0 0 3px 3px;
+    padding: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Log File Details */
+.zw-cacheman-log-file summary {
+    border-radius: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.zw-cacheman-log-file[open] summary {
+    border-radius: 3px 3px 0 0;
+}
+
+.zw-cacheman-log-file .zw-cacheman-details-content {
+    background: #2d2d2d;
+    border: 1px solid #e1e1e1;
+    border-top: 0;
+    border-radius: 0 0 3px 3px;
+    padding: 0;
+}
+
+/* Badge - Universal Style */
+.zw-cacheman-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 10px;
+    background: #e0e0e0;
+    color: #555;
+}
+
+/* Queue Items */
+.zw-cacheman-list-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.zw-cacheman-list-item:last-child {
+    border-bottom: none;
+}
+
+.zw-cacheman-queue-type {
+    background: #0073aa;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-right: 10px;
+}
+
+.zw-cacheman-break-word {
+    word-break: break-all;
+}
+
+/* Log Viewer */
+.zw-cacheman-log-viewer {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 20px;
+    margin: 15px;
+    font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow: auto;
+    max-height: 400px;
+    border-radius: 3px;
+    white-space: pre-wrap;
+    border: 1px solid #333;
+}
+
+.zw-cacheman-log-truncated {
+    margin: 15px 15px 10px;
+    color: #666;
+    font-style: italic;
+    font-size: 12px;
+}
+
+/* Dashboard Status */
+.zw-cacheman-status-item {
+    margin-bottom: 20px;
+}
+
+.zw-cacheman-status-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Dashboard Icons */
+.zw-cacheman-wrap .dashicons {
+    vertical-align: text-bottom;
+    margin-right: 5px;
+}
+
+.zw-cacheman-wrap .dashicons-yes-alt { color: #46b450; }
+.zw-cacheman-wrap .dashicons-warning { color: #f56e28; }
+.zw-cacheman-wrap .dashicons-dismiss { color: #999; }
+.zw-cacheman-wrap .dashicons-list-view.zw-cacheman-has-items { color: #f56e28; }
+.zw-cacheman-wrap .dashicons-list-view.zw-cacheman-empty { color: #46b450; }
+.zw-cacheman-wrap .dashicons-backup { color: #46b450; }
+.zw-cacheman-wrap .dashicons-warning.zw-cacheman-error { color: #dc3232; }
+.zw-cacheman-wrap .dashicons-info { color: #72aee6; }
+.zw-cacheman-wrap .dashicons-minus { color: #999; }
+
+/* Clear Logs Link */
+.zw-cacheman-danger-link {
+    color: #dc3232;
+    text-decoration: none;
+}
+
+.zw-cacheman-danger-link:hover {
+    color: #a02222;
+    text-decoration: underline;
+}
+
+/* Utility */
+.zw-cacheman-wrap hr {
+    margin: 20px 0;
+}

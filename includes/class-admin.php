@@ -61,6 +61,28 @@ class CachemanAdmin
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_init', [$this, 'handle_admin_actions']);
         add_action('admin_notices', [$this, 'admin_notices']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_styles']);
+    }
+
+    /**
+     * Enqueue admin styles
+     *
+     * @param string $hook The current admin page.
+     * @return void
+     */
+    public function enqueue_admin_styles($hook)
+    {
+        // Only load on our settings page
+        if ('settings_page_zw_cacheman_settings' !== $hook) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'zw-cacheman-admin',
+            ZW_CACHEMAN_URL . 'assets/admin-style.css',
+            [],
+            '1.5.0.' . time()
+        );
     }
 
     /**
@@ -104,7 +126,7 @@ class CachemanAdmin
 
         add_settings_section(
             'zw_cacheman_main_section',
-            __('Cloudflare API Settings', 'zw-cacheman'),
+            '',
             function () {
                 echo '<p>' . esc_html__('Enter your Cloudflare API settings below:', 'zw-cacheman') . '</p>';
             },
@@ -247,6 +269,9 @@ class CachemanAdmin
             $test_result = $this->api->test_connection($sanitized['zone_id'], $sanitized['api_key']);
 
             if ($test_result['success']) {
+                // Cache successful connection status for 1 hour
+                set_transient('zw_cacheman_connection_status', 'connected', HOUR_IN_SECONDS);
+
                 add_settings_error(
                     'zw_cacheman_settings',
                     'connection_success',
@@ -254,6 +279,9 @@ class CachemanAdmin
                     'success'
                 );
             } else {
+                // Clear connection status on failure
+                delete_transient('zw_cacheman_connection_status');
+
                 add_settings_error(
                     'zw_cacheman_settings',
                     'connection_error',
@@ -281,146 +309,233 @@ class CachemanAdmin
         $queue = get_option(ZW_CACHEMAN_QUEUE, []);
         $queue_count = count($queue);
         $next_run = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
+
+        // Check if we have credentials
+        $has_credentials = !empty($settings['zone_id']) && !empty($settings['api_key']);
+
+        // Get cached connection status (valid for 1 hour)
+        $connection_status = get_transient('zw_cacheman_connection_status');
+        $is_connected = $has_credentials && $connection_status === 'connected';
         ?>
-        <div class="wrap">
-            <h1><?php echo esc_html__('ZuidWest Cache Manager Settings', 'zw-cacheman'); ?></h1>
+        <div class="wrap zw-cacheman-wrap">
+            <h1><?php echo esc_html__('ZuidWest Cache Manager', 'zw-cacheman'); ?></h1>
             
-            <?php settings_errors(); ?>
-            
-            <form method="post" action="options.php">
-                <?php
-                settings_fields('zw_cacheman_settings');
-                do_settings_sections('zw_cacheman_settings');
-                submit_button();
-                ?>
-            </form>
-            
-            <hr>
-            
-            <h2><?php echo esc_html__('Connection Test', 'zw-cacheman'); ?></h2>
-            <?php if (empty($settings['zone_id']) || empty($settings['api_key'])) : ?>
-                <p><?php echo esc_html__('Please enter your Cloudflare Zone ID and API Key to test the connection.', 'zw-cacheman'); ?></p>
-            <?php else : ?>
-                <p><?php echo esc_html__('Test your Cloudflare API connection:', 'zw-cacheman'); ?></p>
-                <form method="post" action="">
-                    <?php wp_nonce_field('zw_cacheman_test_connection', 'zw_cacheman_test_nonce'); ?>
-                    <input type="hidden" name="zw_cacheman_action" value="test_connection">
-                    <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('Test Connection', 'zw-cacheman'); ?>">
-                </form>
-            <?php endif; ?>
-            
-            <hr>
-            
-            <h2><?php echo esc_html__('WP-Cron Status', 'zw-cacheman'); ?></h2>
-            <?php if ($next_run) : ?>
-    <p>
-                <?php
-                printf(
-            /* translators: 1: Formatted date, 2: Number of seconds until next run */
-                    esc_html__('Next scheduled run: %1$s (in %2$d seconds)', 'zw-cacheman'),
-                    date_i18n('Y-m-d H:i:s', $next_run),
-                    $next_run - time()
-                );
-                ?>
-    </p>
-            <?php else : ?>
-    <p class="notice notice-error"><?php echo esc_html__('WP-Cron job is not scheduled! This will prevent automatic processing.', 'zw-cacheman'); ?></p>
-            <?php endif; ?>
-            
-            <form method="post" action="">
-                <?php wp_nonce_field('zw_cacheman_force_cron', 'zw_cacheman_cron_nonce'); ?>
-                <input type="hidden" name="zw_cacheman_action" value="force_cron">
-                <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('Force Process Queue Now', 'zw-cacheman'); ?>">
-            </form>
-            
-            <hr>
-            
-            <h2><?php echo esc_html__('Queue Status', 'zw-cacheman'); ?></h2>
-            <p><?php
-                /* translators: %d: Number of items in queue */
-                printf(esc_html__('Items currently in queue: %d', 'zw-cacheman'), $queue_count);
-            ?></p>
-            
-            <?php if ($queue_count > 0) : ?>
-                <form method="post" action="">
-                    <?php wp_nonce_field('zw_cacheman_clear_queue', 'zw_cacheman_queue_nonce'); ?>
-                    <input type="hidden" name="zw_cacheman_action" value="clear_queue">
-                    <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('Clear Queue', 'zw-cacheman'); ?>">
-                </form>
-                
-                <br>
-                
-                <details>
-                    <summary><?php echo esc_html__('Show queued items', 'zw-cacheman'); ?></summary>
-                    <div style="max-height: 200px; overflow-y: auto; margin-top: 10px; padding: 10px; background: #f8f8f8; border: 1px solid #ddd;">
-                        <ol>
-                            <?php foreach ($queue as $item) : ?>
-                                <li>
+            <div id="poststuff">
+                <div id="post-body" class="metabox-holder columns-2">
+                    <div id="post-body-content">
+                        
+                        <div class="postbox">
+                            <h2><?php echo esc_html__('Cloudflare API Settings', 'zw-cacheman'); ?></h2>
+                            <div class="inside">
+                                <form method="post" action="options.php">
                                     <?php
-                                    echo '<strong>' . esc_html($item['type']) . '</strong>: ' . esc_url($item['url']);
+                                    settings_fields('zw_cacheman_settings');
+                                    do_settings_sections('zw_cacheman_settings');
+                                    submit_button();
                                     ?>
-                                </li>
-                            <?php endforeach; ?>
-                        </ol>
-                    </div>
-                </details>
-            <?php endif; ?>
-            
-            <hr>
-            
-            <h2><?php echo esc_html__('Debug Logs', 'zw-cacheman'); ?></h2>
-            <?php if (!empty($settings['debug_mode'])) : ?>
-                <p><?php echo esc_html__('Debug mode is enabled. Logs are being written to:', 'zw-cacheman'); ?></p>
-                <code><?php echo esc_html($this->logger->get_current_log_path()); ?></code>
-                
-                <br><br>
-                
-                <form method="post" action="">
-                    <?php wp_nonce_field('zw_cacheman_view_logs', 'zw_cacheman_logs_nonce'); ?>
-                    <input type="hidden" name="zw_cacheman_action" value="view_logs">
-                    <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('View Latest Log Entries', 'zw-cacheman'); ?>">
-                </form>
-                
-                <form method="post" action="" style="margin-top: 10px;">
-                    <?php wp_nonce_field('zw_cacheman_clear_logs', 'zw_cacheman_clear_logs_nonce'); ?>
-                    <input type="hidden" name="zw_cacheman_action" value="clear_logs">
-                    <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('Clear All Logs', 'zw-cacheman'); ?>" onclick="return confirm('<?php echo esc_js(__('Are you sure you want to delete all log files?', 'zw-cacheman')); ?>');">
-                </form>
-                
-                <?php if (isset($_GET['show_logs']) && $_GET['show_logs'] === '1') : ?>
-                    <?php
-                    $log_files = $this->logger->get_log_files(5);
-                    if (!empty($log_files)) :
-                        foreach ($log_files as $log_file) :
-                            $log_content = @file_get_contents($log_file);
-                            $log_name = basename($log_file);
-                            if ($log_content) :
-                                // Get last 100 lines only
-                                $lines = explode("\n", $log_content);
-                                $lines = array_slice($lines, max(0, count($lines) - 100));
-                                $log_content = implode("\n", $lines);
-                                ?>
-                            <h3><?php echo esc_html($log_name); ?></h3>
-                            <div style="max-height: 300px; overflow-y: auto; margin-top: 10px; margin-bottom: 20px; padding: 10px; background: #f8f8f8; border: 1px solid #ddd; font-family: monospace; white-space: pre-wrap; font-size: 12px;">
-                                <?php echo esc_html($log_content); ?>
+                                </form>
                             </div>
-                            <?php else : ?>
-                            <h3><?php echo esc_html($log_name); ?></h3>
-                            <div class="notice notice-error inline">
-                                <p><?php echo esc_html__('Could not read log file.', 'zw-cacheman'); ?></p>
-                            </div>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
-                    <?php else : ?>
-                        <div class="notice notice-info inline">
-                            <p><?php echo esc_html__('No log files found.', 'zw-cacheman'); ?></p>
                         </div>
-                    <?php endif; ?>
-                <?php endif; ?>
-                
-            <?php else : ?>
-                <p><?php echo esc_html__('Debug mode is disabled. Enable it to generate detailed logs.', 'zw-cacheman'); ?></p>
-            <?php endif; ?>
+                        
+                        <div class="postbox">
+                            <h2><?php echo esc_html__('Queue Management', 'zw-cacheman'); ?></h2>
+                            <div class="inside">
+                                <?php if ($queue_count > 0) : ?>
+                                    <p>
+                                        <form method="post" action="" style="display: inline;">
+                                            <?php wp_nonce_field('zw_cacheman_force_cron', 'zw_cacheman_cron_nonce'); ?>
+                                            <input type="hidden" name="zw_cacheman_action" value="force_cron">
+                                            <input type="submit" class="button button-primary" value="<?php echo esc_attr__('Process Queue Now', 'zw-cacheman'); ?>">
+                                        </form>
+                                    </p>
+                                    
+                                    <details class="zw-cacheman-queue">
+                                        <summary>
+                                            <span><?php echo esc_html__('View queued items', 'zw-cacheman'); ?></span>
+                                            <span class="zw-cacheman-badge"><?php echo esc_html((string) $queue_count); ?></span>
+                                        </summary>
+                                        <div class="zw-cacheman-details-content">
+                                            <?php foreach ($queue as $item) : ?>
+                                                <div class="zw-cacheman-list-item">
+                                                    <code class="zw-cacheman-queue-type">
+                                                        <?php echo esc_html(strtoupper($item['type'])); ?>
+                                                    </code>
+                                                    <span class="zw-cacheman-break-word">
+                                                        <?php echo esc_url($item['url']); ?>
+                                                    </span>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </details>
+                                    
+                                    <div style="text-align: right; margin-top: 15px;">
+                                        <form method="post" action="" style="display: inline;">
+                                            <?php wp_nonce_field('zw_cacheman_clear_queue', 'zw_cacheman_queue_nonce'); ?>
+                                            <input type="hidden" name="zw_cacheman_action" value="clear_queue">
+                                            <a href="#" class="zw-cacheman-danger-link" onclick="if(confirm('<?php echo esc_js(__('Are you sure you want to clear the queue?', 'zw-cacheman')); ?>')) { this.closest('form').submit(); } return false;"><?php echo esc_html__('Clear queue', 'zw-cacheman'); ?></a>
+                                        </form>
+                                    </div>
+                                <?php else : ?>
+                                    <p><?php echo esc_html__('The queue is empty. URLs will be added automatically when content changes.', 'zw-cacheman'); ?></p>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                        <?php if (!empty($settings['debug_mode'])) : ?>
+                        <div class="postbox">
+                            <h2><?php echo esc_html__('Debug Logs', 'zw-cacheman'); ?></h2>
+                            <div class="inside">
+                                <p>
+                                    <strong><?php echo esc_html__('Log Directory:', 'zw-cacheman'); ?></strong><br>
+                                    <code style="background: #f0f0f0; padding: 4px 8px; display: inline-block; margin-top: 5px;"><?php echo esc_html(dirname($this->logger->get_current_log_path())); ?></code>
+                                </p>
+                                
+                                <?php
+                                $log_files = $this->logger->get_log_files(30); // Get last 30 days of logs
+                                if (!empty($log_files)) :
+                                    ?>
+                                    <h4><?php echo esc_html__('Available Log Files:', 'zw-cacheman'); ?></h4>
+                                    <div class="mt-15">
+                                        <?php
+                                        foreach ($log_files as $log_file) :
+                                            $filename = basename($log_file);
+                                            $date_match = [];
+                                            if (preg_match('/debug-(\d{4}-\d{2}-\d{2})\.log/', $filename, $date_match)) {
+                                                $log_date = $date_match[1];
+                                                $display_date = date_i18n(get_option('date_format'), strtotime($log_date));
+                                                $file_size = filesize($log_file);
+                                                $file_size_human = size_format($file_size);
+                                                ?>
+                                                <details class="zw-cacheman-log-file">
+                                                    <summary>
+                                                        <span><?php echo esc_html($display_date); ?></span>
+                                                        <span class="zw-cacheman-badge"><?php echo esc_html($file_size_human); ?></span>
+                                                    </summary>
+                                                    <div class="zw-cacheman-details-content">
+                                                        <?php
+                                                        $log_content = @file_get_contents($log_file);
+                                                        if ($log_content) {
+                                                            $lines = explode("\n", trim($log_content));
+                                                            $total_lines = count($lines);
+                                                            $display_lines = array_slice($lines, -100); // Show last 100 lines
+
+                                                            if ($total_lines > 100) {
+                                                                echo '<p class="zw-cacheman-log-truncated">';
+                                                                /* translators: %d: number of log entries */
+                                                                printf(esc_html__('Showing last 100 of %d entries', 'zw-cacheman'), $total_lines);
+                                                                echo '</p>';
+                                                            }
+                                                            ?>
+                                                            <pre class="zw-cacheman-log-viewer"><?php echo esc_html(implode("\n", $display_lines)); ?></pre>
+                                                            <?php
+                                                        } else {
+                                                            echo '<p>' . esc_html__('Unable to read log file.', 'zw-cacheman') . '</p>';
+                                                        }
+                                                        ?>
+                                                    </div>
+                                                </details>
+                                                <?php
+                                            }
+                                        endforeach;
+                                        ?>
+                                    </div>
+                                <?php else : ?>
+                                    <p><?php echo esc_html__('No log files found.', 'zw-cacheman'); ?></p>
+                                <?php endif; ?>
+                                
+                                <div style="text-align: right; margin-top: 20px;">
+                                    <form method="post" action="" style="display: inline;">
+                                        <?php wp_nonce_field('zw_cacheman_clear_logs', 'zw_cacheman_clear_logs_nonce'); ?>
+                                        <input type="hidden" name="zw_cacheman_action" value="clear_logs">
+                                        <a href="#" class="zw-cacheman-danger-link" onclick="if(confirm('<?php echo esc_js(__('Delete all log files? This cannot be undone.', 'zw-cacheman')); ?>')) { this.closest('form').submit(); } return false;"><?php echo esc_html__('Clear all logs', 'zw-cacheman'); ?></a>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        
+                    </div>
+                    
+                    <div id="postbox-container-1" class="postbox-container">
+                        <div class="postbox">
+                            <h2><?php echo esc_html__('Dashboard', 'zw-cacheman'); ?></h2>
+                            <div class="inside">
+                                <div class="main-status">
+                                    <p class="zw-cacheman-status-item">
+                                        <strong><?php echo esc_html__('Connection Status', 'zw-cacheman'); ?></strong><br>
+                                        <?php if ($is_connected) : ?>
+                                            <span class="dashicons dashicons-yes-alt"></span> <?php echo esc_html__('Connected to Cloudflare', 'zw-cacheman'); ?>
+                                        <?php elseif ($has_credentials) : ?>
+                                            <span class="dashicons dashicons-warning"></span> <?php echo esc_html__('Connection failed', 'zw-cacheman'); ?>
+                                        <?php else : ?>
+                                            <span class="dashicons dashicons-dismiss"></span> <?php echo esc_html__('No credentials', 'zw-cacheman'); ?>
+                                        <?php endif; ?>
+                                    </p>
+                                    
+                                    <p class="zw-cacheman-status-item">
+                                        <strong><?php echo esc_html__('Queue Status', 'zw-cacheman'); ?></strong><br>
+                                        <span class="dashicons dashicons-list-view <?php echo $queue_count > 0 ? 'zw-cacheman-has-items' : 'zw-cacheman-empty'; ?>"></span>
+                                        <?php
+                                        if ($queue_count > 0) {
+                                            printf(
+                                                /* translators: %d: number of URLs in the queue */
+                                                esc_html(_n('%d URL pending', '%d URLs pending', $queue_count, 'zw-cacheman')),
+                                                $queue_count
+                                            );
+                                        } else {
+                                            echo esc_html__('Queue empty', 'zw-cacheman');
+                                        }
+                                        ?>
+                                    </p>
+                                    
+                                    <p class="zw-cacheman-status-item">
+                                        <strong><?php echo esc_html__('Cron Status', 'zw-cacheman'); ?></strong><br>
+                                        <?php if ($next_run) : ?>
+                                            <span class="dashicons dashicons-backup"></span> 
+                                            <?php
+                                            $seconds = $next_run - time();
+                                            if ($seconds > 0) {
+                                                $minutes = floor($seconds / 60);
+                                                if ($minutes > 0) {
+                                                    /* translators: %d: minutes until next run */
+                                                    printf(esc_html__('Next run in %d min', 'zw-cacheman'), $minutes);
+                                                } else {
+                                                    /* translators: %d: seconds until next run */
+                                                    printf(esc_html__('Next run in %ds', 'zw-cacheman'), $seconds);
+                                                }
+                                            } else {
+                                                echo esc_html__('Running soon', 'zw-cacheman');
+                                            }
+                                            ?>
+                                        <?php else : ?>
+                                            <span class="dashicons dashicons-warning zw-cacheman-error"></span> <?php echo esc_html__('Not scheduled', 'zw-cacheman'); ?>
+                                        <?php endif; ?>
+                                    </p>
+                                    
+                                    <p class="zw-cacheman-status-item">
+                                        <strong><?php echo esc_html__('Debug Mode', 'zw-cacheman'); ?></strong><br>
+                                        <?php echo $settings['debug_mode'] ?
+                                            '<span class="dashicons dashicons-info"></span> ' . esc_html__('Logging enabled', 'zw-cacheman') :
+                                            '<span class="dashicons dashicons-minus"></span> ' . esc_html__('Logging disabled', 'zw-cacheman'); ?>
+                                    </p>
+                                </div>
+                                
+                                <?php if ($has_credentials) : ?>
+                                <hr>
+                                <p>
+                                    <form method="post" action="">
+                                        <?php wp_nonce_field('zw_cacheman_test_connection', 'zw_cacheman_test_nonce'); ?>
+                                        <input type="hidden" name="zw_cacheman_action" value="test_connection">
+                                        <input type="submit" class="button button-secondary" value="<?php echo esc_attr__('Test Connection', 'zw-cacheman'); ?>" style="width: 100%;">
+                                    </form>
+                                </p>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
         </div>
         <?php
     }
@@ -448,6 +563,14 @@ class CachemanAdmin
                 } else {
                     $this->logger->debug('Admin', 'Manual connection test initiated');
                     $result = $this->api->test_connection($settings['zone_id'], $settings['api_key']);
+
+                    // Update connection status transient
+                    if ($result['success']) {
+                        set_transient('zw_cacheman_connection_status', 'connected', HOUR_IN_SECONDS);
+                    } else {
+                        delete_transient('zw_cacheman_connection_status');
+                    }
+
                     $redirect_args = [
                         'zw_message' => $result['success'] ? 'connection_success' : 'connection_error',
                         'zw_details' => urlencode($result['message'])
@@ -478,10 +601,6 @@ class CachemanAdmin
                 $redirect_args = ['zw_message' => 'queue_cleared'];
                 break;
 
-            case 'view_logs':
-                check_admin_referer('zw_cacheman_view_logs', 'zw_cacheman_logs_nonce');
-                $redirect_args = ['show_logs' => '1'];
-                break;
 
             case 'clear_logs':
                 check_admin_referer('zw_cacheman_clear_logs', 'zw_cacheman_clear_logs_nonce');

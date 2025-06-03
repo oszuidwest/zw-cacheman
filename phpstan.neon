@@ -3,3 +3,5 @@ parameters:
   paths:
     - zuidwest-cache-manager.php
     - includes
+  bootstrapFiles:
+    - phpstan-bootstrap.php
