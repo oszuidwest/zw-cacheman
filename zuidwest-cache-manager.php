@@ -6,6 +6,7 @@
  * Version: 1.6
  * Author: Streekomroep ZuidWest
  * License: GPLv3
+ * Requires at least: 6.8
  * Requires PHP: 8.3
  * Text Domain: zw-cacheman
  */
@@ -74,6 +75,7 @@ function zw_cacheman_activate()
             'batch_size' => 30,
             'debug_mode' => false
         ]);
+        ], true);
     }
 
     // Make sure cron is scheduled

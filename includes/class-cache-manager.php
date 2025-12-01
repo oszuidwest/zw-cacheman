@@ -42,6 +42,34 @@ readonly class CachemanManager
             wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
             $this->logger->debug('Manager', 'Scheduled missing cron job');
         }
+
+        // Add debug logging for cron scheduling checks (WP 6.8+)
+        add_filter('wp_next_scheduled', $this->log_cron_check(...), 10, 3);
+    }
+
+    /**
+     * Log cron scheduling checks for debugging (WP 6.8+)
+     *
+     * @param int|false            $timestamp  Unix timestamp of next scheduled event, or false.
+     * @param object|null          $next_event The next scheduled event object.
+     * @param string               $hook       The hook name being checked.
+     * @return int|false The unmodified timestamp.
+     */
+    public function log_cron_check(int|false $timestamp, ?object $next_event, string $hook): int|false
+    {
+        // Only log checks for our own cron hook
+        if ($hook === ZW_CACHEMAN_CRON_HOOK) {
+            if ($timestamp) {
+                $this->logger->debug(
+                    'Cron',
+                    'Next scheduled run: ' . gmdate('Y-m-d H:i:s', $timestamp) . ' UTC (in ' . ($timestamp - time()) . ' seconds)'
+                );
+            } else {
+                $this->logger->debug('Cron', 'Hook not scheduled');
+            }
+        }
+
+        return $timestamp;
     }
 
     /**
@@ -225,7 +253,7 @@ readonly class CachemanManager
         $added_count = count($all_items) - count($existing_items);
         $this->logger->debug('Manager', 'Added ' . $added_count . ' new purge items to queue. Total in queue: ' . count($all_items));
 
-        update_option(ZW_CACHEMAN_QUEUE, $all_items);
+        update_option(ZW_CACHEMAN_QUEUE, $all_items, false);
     }
 
     /**
@@ -252,8 +280,8 @@ readonly class CachemanManager
         $success = $this->api->process_purge_items($items_to_process);
 
         if ($success) {
-            // Update the queue with remaining items
-            update_option(ZW_CACHEMAN_QUEUE, $remaining_items);
+            // Update the queue with remaining items (autoload disabled for performance)
+            update_option(ZW_CACHEMAN_QUEUE, $remaining_items, false);
             $this->logger->debug('Manager', 'Successfully processed batch. ' . count($remaining_items) . ' items remaining in queue.');
         } else {
             $this->logger->error('Manager', 'Failed to process batch of ' . count($items_to_process) . ' items. Will retry next run.');
