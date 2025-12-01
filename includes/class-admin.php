@@ -577,7 +577,7 @@ readonly class CachemanAdmin
         }
 
         // Redirect back to settings page with message
-        wp_redirect(add_query_arg(
+        wp_safe_redirect(add_query_arg(
             array_merge(['page' => 'zw_cacheman_settings'], $redirect_args),
             admin_url('options-general.php')
         ));
