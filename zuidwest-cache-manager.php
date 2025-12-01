@@ -6,6 +6,7 @@
  * Version: 1.6
  * Author: Streekomroep ZuidWest
  * License: GPLv3
+ * Requires PHP: 8.3
  * Text Domain: zw-cacheman
  */
 
