@@ -610,20 +610,23 @@ readonly class CachemanAdmin
 
             if (isset($notices[$message])) {
                 list($type, $text) = $notices[$message];
-                printf(
-                    '<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
-                    esc_attr($type),
-                    esc_html($text)
-                );
+                wp_admin_notice($text, [
+                    'type' => $type,
+                    'dismissible' => true
+                ]);
             }
         }
 
         // Check if cron is scheduled
         if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
-            echo '<div class="notice notice-error"><p>';
-            echo '<strong>' . esc_html__('Warning:', 'zw-cacheman') . '</strong> ';
-            echo esc_html__('The WP-Cron job for cache processing is not scheduled. This will prevent automatic processing of the queue.', 'zw-cacheman');
-            echo '</p></div>';
+            wp_admin_notice(
+                '<strong>' . esc_html__('Warning:', 'zw-cacheman') . '</strong> ' .
+                esc_html__('The WP-Cron job for cache processing is not scheduled. This will prevent automatic processing of the queue.', 'zw-cacheman'),
+                [
+                    'type' => 'error',
+                    'dismissible' => false
+                ]
+            );
         }
     }
 }
