@@ -74,7 +74,6 @@ function zw_cacheman_activate()
             'api_key' => '',
             'batch_size' => 30,
             'debug_mode' => false
-        ]);
         ], true);
     }
 
