@@ -8,35 +8,14 @@ namespace ZW_CACHEMAN_Core;
 /**
  * Handles the admin interface and settings
  */
-class CachemanAdmin
+readonly class CachemanAdmin
 {
-    /**
-     * Cache Manager instance
-     *
-     * @var CachemanManager
-     */
-    private $manager;
-
-    /**
-     * API instance
-     *
-     * @var CachemanAPI
-     */
-    private $api;
-
-    /**
-     * Logger instance
-     *
-     * @var CachemanLogger
-     */
-    private $logger;
-
     /**
      * Default settings
      *
-     * @var array
+     * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool}
      */
-    private $default_settings = [
+    private const array DEFAULT_SETTINGS = [
         'zone_id'    => '',
         'api_key'    => '',
         'batch_size' => 30,
@@ -50,27 +29,25 @@ class CachemanAdmin
      * @param CachemanAPI     $api     The API instance.
      * @param CachemanLogger  $logger  The logger instance.
      */
-    public function __construct($manager, $api, $logger)
-    {
-        $this->manager = $manager;
-        $this->api     = $api;
-        $this->logger  = $logger;
-
+    public function __construct(
+        private CachemanManager $manager,
+        private CachemanAPI $api,
+        private CachemanLogger $logger
+    ) {
         // Register admin hooks
-        add_action('admin_menu', [$this, 'add_admin_menu']);
-        add_action('admin_init', [$this, 'register_settings']);
-        add_action('admin_init', [$this, 'handle_admin_actions']);
-        add_action('admin_notices', [$this, 'admin_notices']);
-        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_styles']);
+        add_action('admin_menu', $this->add_admin_menu(...));
+        add_action('admin_init', $this->register_settings(...));
+        add_action('admin_init', $this->handle_admin_actions(...));
+        add_action('admin_notices', $this->admin_notices(...));
+        add_action('admin_enqueue_scripts', $this->enqueue_admin_styles(...));
     }
 
     /**
      * Enqueue admin styles
      *
      * @param string $hook The current admin page.
-     * @return void
      */
-    public function enqueue_admin_styles($hook)
+    public function enqueue_admin_styles(string $hook): void
     {
         // Only load on our settings page
         if ('settings_page_zw_cacheman_settings' !== $hook) {
@@ -87,26 +64,22 @@ class CachemanAdmin
 
     /**
      * Add admin menu page
-     *
-     * @return void
      */
-    public function add_admin_menu()
+    public function add_admin_menu(): void
     {
         add_options_page(
             __('ZuidWest Cache Manager Settings', 'zw-cacheman'),
             __('ZuidWest Cache', 'zw-cacheman'),
             'manage_options',
             'zw_cacheman_settings',
-            [$this, 'render_settings_page']
+            $this->render_settings_page(...)
         );
     }
 
     /**
      * Register plugin settings
-     *
-     * @return void
      */
-    public function register_settings()
+    public function register_settings(): void
     {
         // Define a static sanitize callback for better security
         $sanitize_callback = function ($input) {
@@ -137,7 +110,7 @@ class CachemanAdmin
         add_settings_field(
             'zone_id',
             __('Zone ID', 'zw-cacheman'),
-            [$this, 'render_field'],
+            $this->render_field(...),
             'zw_cacheman_settings',
             'zw_cacheman_main_section',
             ['name' => 'zone_id', 'type' => 'text']
@@ -146,7 +119,7 @@ class CachemanAdmin
         add_settings_field(
             'api_key',
             __('API Key', 'zw-cacheman'),
-            [$this, 'render_field'],
+            $this->render_field(...),
             'zw_cacheman_settings',
             'zw_cacheman_main_section',
             ['name' => 'api_key', 'type' => 'password']
@@ -155,7 +128,7 @@ class CachemanAdmin
         add_settings_field(
             'batch_size',
             __('Batch Size', 'zw-cacheman'),
-            [$this, 'render_field'],
+            $this->render_field(...),
             'zw_cacheman_settings',
             'zw_cacheman_main_section',
             ['name' => 'batch_size', 'type' => 'number', 'default' => 30]
@@ -164,7 +137,7 @@ class CachemanAdmin
         add_settings_field(
             'debug_mode',
             __('Debug Mode', 'zw-cacheman'),
-            [$this, 'render_field'],
+            $this->render_field(...),
             'zw_cacheman_settings',
             'zw_cacheman_main_section',
             ['name' => 'debug_mode', 'type' => 'checkbox']
@@ -174,60 +147,51 @@ class CachemanAdmin
     /**
      * Render settings field
      *
-     * @param array $args Field arguments.
-     * @return void
+     * @param array{name: string, type: string, default?: mixed} $args Field arguments.
      */
-    public function render_field($args)
+    public function render_field(array $args): void
     {
-        $settings = get_option(ZW_CACHEMAN_SETTINGS, $this->default_settings);
+        $settings = get_option(ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS);
         $name = $args['name'];
-        $value = isset($settings[$name]) ? $settings[$name] : (isset($args['default']) ? $args['default'] : '');
+        $value = $settings[$name] ?? ($args['default'] ?? '');
 
-        switch ($args['type']) {
-            case 'text':
-            case 'password':
-                printf(
-                    '<input type="%s" id="%s" name="%s[%s]" value="%s" class="regular-text" />',
-                    esc_attr($args['type']),
-                    esc_attr($name),
-                    esc_attr(ZW_CACHEMAN_SETTINGS),
-                    esc_attr($name),
-                    esc_attr($value)
-                );
-                break;
-
-            case 'number':
-                printf(
-                    '<input type="number" id="%s" name="%s[%s]" value="%s" class="regular-text" />',
-                    esc_attr($name),
-                    esc_attr(ZW_CACHEMAN_SETTINGS),
-                    esc_attr($name),
-                    esc_attr($value)
-                );
-                break;
-
-            case 'checkbox':
-                printf(
-                    '<input type="checkbox" id="%s" name="%s[%s]" value="1" %s />',
-                    esc_attr($name),
-                    esc_attr(ZW_CACHEMAN_SETTINGS),
-                    esc_attr($name),
-                    checked(1, $value, false)
-                );
-                break;
-        }
+        match ($args['type']) {
+            'text', 'password' => printf(
+                '<input type="%s" id="%s" name="%s[%s]" value="%s" class="regular-text" />',
+                esc_attr($args['type']),
+                esc_attr($name),
+                esc_attr(ZW_CACHEMAN_SETTINGS),
+                esc_attr($name),
+                esc_attr($value)
+            ),
+            'number' => printf(
+                '<input type="number" id="%s" name="%s[%s]" value="%s" class="regular-text" />',
+                esc_attr($name),
+                esc_attr(ZW_CACHEMAN_SETTINGS),
+                esc_attr($name),
+                esc_attr($value)
+            ),
+            'checkbox' => printf(
+                '<input type="checkbox" id="%s" name="%s[%s]" value="1" %s />',
+                esc_attr($name),
+                esc_attr(ZW_CACHEMAN_SETTINGS),
+                esc_attr($name),
+                checked(1, $value, false)
+            ),
+            default => null
+        };
     }
 
     /**
      * Sanitize settings
      *
-     * @param array $input Raw input values.
-     * @return array Sanitized values.
+     * @param array<string, mixed> $input Raw input values.
+     * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool} Sanitized values.
      */
-    public function sanitize_settings($input)
+    public function sanitize_settings(array $input): array
     {
         $sanitized = [];
-        $old_settings = get_option(ZW_CACHEMAN_SETTINGS, $this->default_settings);
+        $old_settings = get_option(ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS);
 
         // Sanitize text fields
         $sanitized['zone_id'] = isset($input['zone_id']) ? sanitize_text_field($input['zone_id']) : '';
@@ -296,16 +260,14 @@ class CachemanAdmin
 
     /**
      * Render the settings page
-     *
-     * @return void
      */
-    public function render_settings_page()
+    public function render_settings_page(): void
     {
         if (!current_user_can('manage_options')) {
             return;
         }
 
-        $settings = get_option(ZW_CACHEMAN_SETTINGS, $this->default_settings);
+        $settings = get_option(ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS);
         $queue = get_option(ZW_CACHEMAN_QUEUE, []);
         $queue_count = count($queue);
         $next_run = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
@@ -358,7 +320,7 @@ class CachemanAdmin
                                             <?php foreach ($queue as $item) : ?>
                                                 <div class="zw-cacheman-list-item">
                                                     <code class="zw-cacheman-queue-type">
-                                                        <?php echo esc_html(strtoupper($item['type'])); ?>
+                                                        <?php echo esc_html(strtoupper($item['type']->value)); ?>
                                                     </code>
                                                     <span class="zw-cacheman-break-word">
                                                         <?php echo esc_url($item['url']); ?>
@@ -543,10 +505,8 @@ class CachemanAdmin
 
     /**
      * Handle admin actions (test connection, force cron, clear queue, etc.)
-     *
-     * @return void
      */
-    public function handle_admin_actions()
+    public function handle_admin_actions(): void
     {
         if (!isset($_POST['zw_cacheman_action']) || !current_user_can('manage_options')) {
             return;
@@ -557,7 +517,7 @@ class CachemanAdmin
         switch ($action) {
             case 'test_connection':
                 check_admin_referer('zw_cacheman_test_connection', 'zw_cacheman_test_nonce');
-                $settings = get_option(ZW_CACHEMAN_SETTINGS, $this->default_settings);
+                $settings = get_option(ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS);
 
                 if (empty($settings['zone_id']) || empty($settings['api_key'])) {
                     $redirect_args = ['zw_message' => 'missing_credentials'];
@@ -626,10 +586,8 @@ class CachemanAdmin
 
     /**
      * Display admin notices
-     *
-     * @return void
      */
-    public function admin_notices()
+    public function admin_notices(): void
     {
         if (!isset($_GET['page']) || $_GET['page'] !== 'zw_cacheman_settings') {
             return;

@@ -11,26 +11,15 @@ namespace ZW_CACHEMAN_Core;
  */
 class CachemanLogger
 {
-    /**
-     * Debug mode
-     *
-     * @var bool
-     */
-    private $debug_mode = false;
-
-    /**
-     * Log directory
-     *
-     * @var string
-     */
-    private $log_dir = '';
+    private bool $debug_mode;
+    private readonly string $log_dir;
 
     /**
      * Constructor
      *
      * @param bool $debug_mode Whether debug mode is enabled.
      */
-    public function __construct($debug_mode = false)
+    public function __construct(bool $debug_mode = false)
     {
         $this->debug_mode = $debug_mode;
 
@@ -48,11 +37,10 @@ class CachemanLogger
      * Update debug mode setting
      *
      * @param bool $debug_mode Whether debug mode is enabled.
-     * @return void
      */
-    public function set_debug_mode($debug_mode)
+    public function set_debug_mode(bool $debug_mode): void
     {
-        $this->debug_mode = (bool) $debug_mode;
+        $this->debug_mode = $debug_mode;
     }
 
     /**
@@ -60,9 +48,8 @@ class CachemanLogger
      *
      * @param string $source The source of the log message.
      * @param string $message The message to log.
-     * @return void
      */
-    public function debug($source, $message)
+    public function debug(string $source, string $message): void
     {
         if (!$this->debug_mode) {
             return;
@@ -81,9 +68,8 @@ class CachemanLogger
      *
      * @param string $source The source of the log message.
      * @param string $message The error message to log.
-     * @return void
      */
-    public function error($source, $message)
+    public function error(string $source, string $message): void
     {
         // Always log errors to PHP error log
         error_log('[ZW Cacheman ERROR] [' . $source . '] ' . $message);
@@ -104,7 +90,7 @@ class CachemanLogger
      *
      * @return string Path to current debug log file.
      */
-    public function get_current_log_path()
+    public function get_current_log_path(): string
     {
         return $this->log_dir . 'debug-' . current_time('Y-m-d') . '.log';
     }
@@ -113,9 +99,9 @@ class CachemanLogger
      * Get list of available log files
      *
      * @param int $limit Limit the number of files returned.
-     * @return array Array of log file paths.
+     * @return array<string> Array of log file paths.
      */
-    public function get_log_files($limit = 10)
+    public function get_log_files(int $limit = 10): array
     {
         if (!is_dir($this->log_dir)) {
             return [];
@@ -138,7 +124,7 @@ class CachemanLogger
      *
      * @return bool True on success, false on failure.
      */
-    public function clear_logs()
+    public function clear_logs(): bool
     {
         if (!is_dir($this->log_dir)) {
             return false;

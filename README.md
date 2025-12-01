@@ -190,7 +190,7 @@ The plugin purges individual taxonomy feeds (e.g., `/regio/roosendaal/feed/`) bu
 ## Requirements
 
 - WordPress 6.7+
-- PHP 8.2+
+- PHP 8.3+
 - Active Cloudflare account with API access
 - Properly configured WP-Cron
 
