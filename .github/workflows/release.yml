@@ -8,6 +8,9 @@ on:
         default: false
         required: false
 
+permissions:
+  contents: write
+
 jobs:
   validate-and-release:
     runs-on: ubuntu-latest
