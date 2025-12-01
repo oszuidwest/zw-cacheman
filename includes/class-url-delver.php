@@ -9,41 +9,27 @@ namespace ZW_CACHEMAN_Core;
 /**
  * Handles detection and extraction of URLs for cache purging
  */
-class CachemanUrlDelver
+readonly class CachemanUrlDelver
 {
-    /**
-     * URL Helper instance
-     *
-     * @var CachemanUrlHelper
-     */
-    private $url_helper;
-
-    /**
-     * Logger instance
-     *
-     * @var CachemanLogger
-     */
-    private $logger;
-
     /**
      * Constructor
      *
      * @param CachemanUrlHelper $url_helper The URL helper instance.
      * @param CachemanLogger    $logger     The logger instance.
      */
-    public function __construct($url_helper, $logger)
-    {
-        $this->url_helper = $url_helper;
-        $this->logger = $logger;
+    public function __construct(
+        private CachemanUrlHelper $url_helper,
+        private CachemanLogger $logger
+    ) {
     }
 
     /**
      * Get high priority purge items for a post
      *
      * @param \WP_Post $post Post object.
-     * @return array List of purge items.
+     * @return array<array{type: PurgeType, url: string}> List of purge items.
      */
-    public function get_high_priority_purge_items($post)
+    public function get_high_priority_purge_items(\WP_Post $post): array
     {
         $urls = [];
         // Log if we're working with a trashed post
@@ -63,24 +49,24 @@ class CachemanUrlDelver
                 // Get clean permalink
                 $clean_permalink = get_permalink($resurrected_post);
                 if ($clean_permalink) {
-                    $urls[] = ['url' => $clean_permalink, 'type' => 'file'];
+                    $urls[] = ['url' => $clean_permalink, 'type' => PurgeType::File];
                 }
             }
         } else {
             // Only add the current permalink for non-trashed posts
             $permalink = get_permalink($post->ID);
             if ($permalink) {
-                $urls[] = ['url' => $permalink, 'type' => 'file'];
+                $urls[] = ['url' => $permalink, 'type' => PurgeType::File];
             }
         }
 
         // Home URL
-        $urls[] = ['url' => get_home_url(), 'type' => 'file'];
+        $urls[] = ['url' => get_home_url(), 'type' => PurgeType::File];
 
         // Post type archive
         $archive_link = get_post_type_archive_link($post->post_type);
         if ($archive_link) {
-            $urls[] = ['url' => $archive_link, 'type' => 'file'];
+            $urls[] = ['url' => $archive_link, 'type' => PurgeType::File];
         }
 
         // REST API URLs
@@ -89,14 +75,14 @@ class CachemanUrlDelver
             $rest_base = !empty($post_type_obj->rest_base) ? $post_type_obj->rest_base : $post->post_type;
 
             // Individual post endpoint
-            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $post->ID), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $post->ID), 'type' => PurgeType::File];
 
             // Post type collection endpoint
-            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => PurgeType::File];
         }
 
         // REST API root endpoint
-        $urls[] = ['url' => rest_url(), 'type' => 'file'];
+        $urls[] = ['url' => rest_url(), 'type' => PurgeType::File];
 
         // Create purge items
         $purge_items = $this->create_purge_items($urls);
@@ -110,9 +96,9 @@ class CachemanUrlDelver
      * Get low priority purge items for a post (taxonomy, author archives, etc.)
      *
      * @param \WP_Post $post Post object.
-     * @return array List of purge items.
+     * @return array<array{type: PurgeType, url: string}> List of purge items.
      */
-    public function get_low_priority_purge_items($post)
+    public function get_low_priority_purge_items(\WP_Post $post): array
     {
         $urls = [];
 
@@ -121,16 +107,16 @@ class CachemanUrlDelver
         if ($post_type_obj && $post_type_obj->has_archive) {
             $archive_link = get_post_type_archive_link($post->post_type);
             if ($archive_link) {
-                $urls[] = ['url' => $archive_link, 'type' => 'prefix'];
+                $urls[] = ['url' => $archive_link, 'type' => PurgeType::Prefix];
             }
         }
 
         // Feed URLs
-        $urls[] = ['url' => get_feed_link(), 'type' => 'file'];
+        $urls[] = ['url' => get_feed_link(), 'type' => PurgeType::File];
 
         $post_feed_link = get_post_comments_feed_link($post->ID);
         if ($post_feed_link) {
-            $urls[] = ['url' => $post_feed_link, 'type' => 'file'];
+            $urls[] = ['url' => $post_feed_link, 'type' => PurgeType::File];
         }
 
         // Taxonomy URLs
@@ -141,12 +127,12 @@ class CachemanUrlDelver
                 foreach ($terms as $term) {
                     $term_link = get_term_link($term, $taxonomy);
                     if (!is_wp_error($term_link)) {
-                        $urls[] = ['url' => $term_link, 'type' => 'prefix'];
+                        $urls[] = ['url' => $term_link, 'type' => PurgeType::Prefix];
 
                         // Term feed
                         $term_feed_link = get_term_feed_link($term->term_id, $taxonomy);
                         if ($term_feed_link) {
-                            $urls[] = ['url' => $term_feed_link, 'type' => 'file'];
+                            $urls[] = ['url' => $term_feed_link, 'type' => PurgeType::File];
                         }
 
                         // REST API endpoints for term
@@ -154,8 +140,8 @@ class CachemanUrlDelver
                         if ($tax_obj && $tax_obj->show_in_rest) {
                             $rest_base = !empty($tax_obj->rest_base) ? $tax_obj->rest_base : $taxonomy;
 
-                            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $term->term_id), 'type' => 'file'];
-                            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => 'file'];
+                            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $term->term_id), 'type' => PurgeType::File];
+                            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => PurgeType::File];
                         }
                     }
                 }
@@ -166,21 +152,21 @@ class CachemanUrlDelver
         if (post_type_supports($post->post_type, 'author')) {
             $author_url = get_author_posts_url((int)$post->post_author);
             if ($author_url) {
-                $urls[] = ['url' => $author_url, 'type' => 'prefix'];
+                $urls[] = ['url' => $author_url, 'type' => PurgeType::Prefix];
 
                 // Author feed
                 $author_feed = get_author_feed_link((int)$post->post_author);
                 if ($author_feed) {
-                    $urls[] = ['url' => $author_feed, 'type' => 'file'];
+                    $urls[] = ['url' => $author_feed, 'type' => PurgeType::File];
                 }
 
                 // Author REST API endpoint
-                $urls[] = ['url' => rest_url('wp/v2/users/' . $post->post_author), 'type' => 'file'];
+                $urls[] = ['url' => rest_url('wp/v2/users/' . $post->post_author), 'type' => PurgeType::File];
             }
         }
 
         // Global REST API taxonomies endpoint
-        $urls[] = ['url' => rest_url('wp/v2/taxonomies'), 'type' => 'file'];
+        $urls[] = ['url' => rest_url('wp/v2/taxonomies'), 'type' => PurgeType::File];
 
         // Create purge items
         $purge_items = $this->create_purge_items($urls);
@@ -195,9 +181,9 @@ class CachemanUrlDelver
      *
      * @param int      $post_id Post ID.
      * @param \WP_Post $post    Post object.
-     * @return array List of purge items.
+     * @return array<array{type: PurgeType, url: string}> List of purge items.
      */
-    public function get_deleted_post_purge_items($post_id, $post)
+    public function get_deleted_post_purge_items(int $post_id, \WP_Post $post): array
     {
         // For deleted posts, we'll combine both high and low priority URLs
         // since we want to purge everything related to this post immediately
@@ -217,20 +203,20 @@ class CachemanUrlDelver
      *
      * @param \WP_Term $term     Term object.
      * @param string   $taxonomy Taxonomy slug.
-     * @return array List of purge items.
+     * @return array<array{type: PurgeType, url: string}> List of purge items.
      */
-    public function get_high_priority_term_purge_items($term, $taxonomy)
+    public function get_high_priority_term_purge_items(\WP_Term $term, string $taxonomy): array
     {
         $urls = [];
 
         // Term archive URL
         $term_link = get_term_link($term);
         if (!is_wp_error($term_link)) {
-            $urls[] = ['url' => $term_link, 'type' => 'file'];
+            $urls[] = ['url' => $term_link, 'type' => PurgeType::File];
         }
 
         // Home URL
-        $urls[] = ['url' => get_home_url(), 'type' => 'file'];
+        $urls[] = ['url' => get_home_url(), 'type' => PurgeType::File];
 
         // REST API endpoints for this term
         $tax_obj = get_taxonomy($taxonomy);
@@ -238,13 +224,13 @@ class CachemanUrlDelver
             $rest_base = !empty($tax_obj->rest_base) ? $tax_obj->rest_base : $taxonomy;
 
             // Individual term endpoint
-            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $term->term_id), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $term->term_id), 'type' => PurgeType::File];
 
             // Taxonomy collection endpoint
-            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => PurgeType::File];
 
             // Taxonomies endpoint
-            $urls[] = ['url' => rest_url('wp/v2/taxonomies'), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/taxonomies'), 'type' => PurgeType::File];
         }
 
         // Create purge items
@@ -260,22 +246,22 @@ class CachemanUrlDelver
      *
      * @param \WP_Term $term     Term object.
      * @param string   $taxonomy Taxonomy slug.
-     * @return array List of purge items.
+     * @return array<array{type: PurgeType, url: string}> List of purge items.
      */
-    public function get_low_priority_term_purge_items($term, $taxonomy)
+    public function get_low_priority_term_purge_items(\WP_Term $term, string $taxonomy): array
     {
         $urls = [];
 
         // Term archive URL as prefix
         $term_link = get_term_link($term);
         if (!is_wp_error($term_link)) {
-            $urls[] = ['url' => $term_link, 'type' => 'prefix'];
+            $urls[] = ['url' => $term_link, 'type' => PurgeType::Prefix];
         }
 
         // Term feed URL
         $term_feed_link = get_term_feed_link($term->term_id, $taxonomy);
         if ($term_feed_link) {
-            $urls[] = ['url' => $term_feed_link, 'type' => 'file'];
+            $urls[] = ['url' => $term_feed_link, 'type' => PurgeType::File];
         }
 
         // Parent term if any
@@ -284,19 +270,19 @@ class CachemanUrlDelver
             if (!is_wp_error($parent_term)) {
                 $parent_link = get_term_link($parent_term);
                 if (!is_wp_error($parent_link)) {
-                    $urls[] = ['url' => $parent_link, 'type' => 'prefix'];
+                    $urls[] = ['url' => $parent_link, 'type' => PurgeType::Prefix];
 
                     // Parent term feed
                     $parent_feed_link = get_term_feed_link($parent_term->term_id, $taxonomy);
                     if ($parent_feed_link) {
-                        $urls[] = ['url' => $parent_feed_link, 'type' => 'file'];
+                        $urls[] = ['url' => $parent_feed_link, 'type' => PurgeType::File];
                     }
                 }
             }
         }
 
         // Main feed link
-        $urls[] = ['url' => get_feed_link(), 'type' => 'file'];
+        $urls[] = ['url' => get_feed_link(), 'type' => PurgeType::File];
 
         // Create purge items
         $purge_items = $this->create_purge_items($urls);
@@ -311,14 +297,14 @@ class CachemanUrlDelver
      *
      * @param int    $term_id  Term ID.
      * @param string $taxonomy Taxonomy slug.
-     * @return array List of purge items.
+     * @return array<array{type: PurgeType, url: string}> List of purge items.
      */
-    public function get_deleted_term_purge_items($term_id, $taxonomy)
+    public function get_deleted_term_purge_items(int $term_id, string $taxonomy): array
     {
         $urls = [];
 
         // Home URL
-        $urls[] = ['url' => get_home_url(), 'type' => 'file'];
+        $urls[] = ['url' => get_home_url(), 'type' => PurgeType::File];
 
         // Taxonomy archive if available
         $tax_obj = get_taxonomy($taxonomy);
@@ -326,7 +312,7 @@ class CachemanUrlDelver
             $tax_base = !empty($tax_obj->rewrite['slug']) ? $tax_obj->rewrite['slug'] : $taxonomy;
             $tax_archive = trailingslashit(get_home_url()) . $tax_base . '/';
 
-            $urls[] = ['url' => $tax_archive, 'type' => 'prefix'];
+            $urls[] = ['url' => $tax_archive, 'type' => PurgeType::Prefix];
         }
 
         // REST API endpoints if applicable
@@ -334,17 +320,17 @@ class CachemanUrlDelver
             $rest_base = !empty($tax_obj->rest_base) ? $tax_obj->rest_base : $taxonomy;
 
             // Term endpoint (even though deleted)
-            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $term_id), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base . '/' . $term_id), 'type' => PurgeType::File];
 
             // Taxonomy collection endpoint
-            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/' . $rest_base), 'type' => PurgeType::File];
 
             // Taxonomies endpoint
-            $urls[] = ['url' => rest_url('wp/v2/taxonomies'), 'type' => 'file'];
+            $urls[] = ['url' => rest_url('wp/v2/taxonomies'), 'type' => PurgeType::File];
         }
 
         // Main feed
-        $urls[] = ['url' => get_feed_link(), 'type' => 'file'];
+        $urls[] = ['url' => get_feed_link(), 'type' => PurgeType::File];
 
         // Create purge items
         $purge_items = $this->create_purge_items($urls);
@@ -357,10 +343,10 @@ class CachemanUrlDelver
     /**
      * Create purge items from URL data
      *
-     * @param array $urls Array of URL data with 'url' and 'type' keys.
-     * @return array List of validated purge items.
+     * @param array<array{url: string, type: PurgeType}> $urls Array of URL data with 'url' and 'type' keys.
+     * @return array<array{type: PurgeType, url: string}> List of validated purge items.
      */
-    private function create_purge_items($urls)
+    private function create_purge_items(array $urls): array
     {
         $purge_items = [];
 
@@ -380,7 +366,7 @@ class CachemanUrlDelver
         $seen_keys = [];
 
         foreach ($purge_items as $item) {
-            $key = $item['type'] . '|' . $item['url'];
+            $key = $item['type']->value . '|' . $item['url'];
             if (!isset($seen_keys[$key])) {
                 $seen_keys[$key] = true;
                 $unique_items[] = $item;

@@ -21,6 +21,7 @@ define('ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings');
 define('ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook');
 
 // Include required files
+require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
 require_once ZW_CACHEMAN_DIR . 'includes/class-logger.php';
 require_once ZW_CACHEMAN_DIR . 'includes/class-url-helper.php';
 require_once ZW_CACHEMAN_DIR . 'includes/class-api.php';

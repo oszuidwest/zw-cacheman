@@ -9,41 +9,27 @@ namespace ZW_CACHEMAN_Core;
 /**
  * API handler for Cloudflare cache purging
  */
-class CachemanAPI
+readonly class CachemanAPI
 {
-    /**
-     * URL Helper instance
-     *
-     * @var CachemanUrlHelper
-     */
-    private $url_helper;
-
-    /**
-     * Logger instance
-     *
-     * @var CachemanLogger
-     */
-    private $logger;
-
     /**
      * Constructor
      *
      * @param CachemanUrlHelper $url_helper The URL helper instance.
      * @param CachemanLogger    $logger     The logger instance.
      */
-    public function __construct($url_helper, $logger)
-    {
-        $this->url_helper = $url_helper;
-        $this->logger = $logger;
+    public function __construct(
+        private CachemanUrlHelper $url_helper,
+        private CachemanLogger $logger
+    ) {
     }
 
     /**
      * Purge URLs via Cloudflare API
      *
-     * @param array $urls URLs to purge.
+     * @param array<string> $urls URLs to purge.
      * @return bool Success or failure.
      */
-    public function purge_urls($urls)
+    public function purge_urls(array $urls): bool
     {
         if (empty($urls)) {
             return true;
@@ -116,10 +102,10 @@ class CachemanAPI
     /**
      * Purge URL prefixes via Cloudflare API
      *
-     * @param array $prefixes URL prefixes to purge.
+     * @param array<string> $prefixes URL prefixes to purge.
      * @return bool Success or failure.
      */
-    public function purge_url_prefixes($prefixes)
+    public function purge_url_prefixes(array $prefixes): bool
     {
         if (empty($prefixes)) {
             return true;
@@ -192,10 +178,10 @@ class CachemanAPI
     /**
      * Process purge items (handles both file and prefix purging)
      *
-     * @param array $purge_items Items to purge
+     * @param array<array{type: PurgeType, url: string}> $purge_items Items to purge
      * @return bool Success status
      */
-    public function process_purge_items($purge_items)
+    public function process_purge_items(array $purge_items): bool
     {
         if (empty($purge_items)) {
             return true;
@@ -208,9 +194,9 @@ class CachemanAPI
         $prefixes = array();
 
         foreach ($purge_items as $item) {
-            if ($item['type'] === 'file') {
+            if ($item['type'] === PurgeType::File) {
                 $files[] = $item['url'];
-            } elseif ($item['type'] === 'prefix') {
+            } elseif ($item['type'] === PurgeType::Prefix) {
                 $prefixes[] = $item['url'];
             }
         }
@@ -258,9 +244,9 @@ class CachemanAPI
      *
      * @param string $zone_id The Cloudflare Zone ID.
      * @param string $api_key The Cloudflare API Key.
-     * @return array Result with success status and message.
+     * @return array{success: bool, message: string, data?: array{zone_name: string, plan_name: string}} Result with success status and message.
      */
-    public function test_connection($zone_id, $api_key)
+    public function test_connection(string $zone_id, #[\SensitiveParameter] string $api_key): array
     {
         if (empty($zone_id) || empty($api_key)) {
             return array(

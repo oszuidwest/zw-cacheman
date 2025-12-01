@@ -9,23 +9,16 @@ namespace ZW_CACHEMAN_Core;
 /**
  * Centralized URL validation and formatting
  */
-class CachemanUrlHelper
+readonly class CachemanUrlHelper
 {
-    /**
-     * Logger instance
-     *
-     * @var CachemanLogger
-     */
-    private $logger;
-
     /**
      * Constructor
      *
      * @param CachemanLogger $logger The logger instance.
      */
-    public function __construct($logger)
-    {
-        $this->logger = $logger;
+    public function __construct(
+        private CachemanLogger $logger
+    ) {
     }
 
     /**
@@ -35,7 +28,7 @@ class CachemanUrlHelper
      * @param bool $add_trailing_slash Whether to add trailing slash.
      * @return string|false Cleaned URL or false if invalid.
      */
-    public function clean_url($url, $add_trailing_slash = true)
+    public function clean_url(string $url, bool $add_trailing_slash = true): string|false
     {
         // Check if URL is valid
         if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
@@ -78,7 +71,7 @@ class CachemanUrlHelper
      * @param string $url Full URL to format as prefix.
      * @return string|false Formatted prefix or false if invalid.
      */
-    public function format_url_prefix($url)
+    public function format_url_prefix(string $url): string|false
     {
         // If the URL contains a query string character, invalid for prefix
         if (strpos($url, '?') !== false) {
@@ -104,17 +97,17 @@ class CachemanUrlHelper
      * Create a purge item structure for a URL
      *
      * @param string $url The URL to create a purge item for.
-     * @param string $type The type of purge item ('file' or 'prefix').
-     * @return array|false Purge item structure or false if invalid.
+     * @param PurgeType $type The type of purge item ('file' or 'prefix').
+     * @return array{type: PurgeType, url: string}|false Purge item structure or false if invalid.
      */
-    public function create_purge_item($url, $type = 'file')
+    public function create_purge_item(string $url, PurgeType $type = PurgeType::File): array|false
     {
         if (empty($url)) {
             $this->logger->debug('URL Helper', 'Empty URL provided to create_purge_item');
             return false;
         }
 
-        if ($type === 'file') {
+        if ($type === PurgeType::File) {
             // For file URLs, add trailing slash for consistency
             $cleaned_url = $this->clean_url($url, true);
             if (!$cleaned_url) {
@@ -122,10 +115,10 @@ class CachemanUrlHelper
             }
 
             return array(
-                'type' => 'file',
+                'type' => PurgeType::File,
                 'url' => $cleaned_url
             );
-        } elseif ($type === 'prefix') {
+        } elseif ($type === PurgeType::Prefix) {
             // For prefix URLs, don't add trailing slash
             $prefix = $this->format_url_prefix($url);
             if (!$prefix) {
@@ -133,22 +126,19 @@ class CachemanUrlHelper
             }
 
             return array(
-                'type' => 'prefix',
+                'type' => PurgeType::Prefix,
                 'url' => $prefix
             );
         }
-
-        $this->logger->debug('URL Helper', 'Invalid purge item type: ' . $type);
-        return false;
     }
 
     /**
      * Clean and filter multiple URLs
      *
-     * @param array $urls Array of URLs to clean.
-     * @return array Array of cleaned, valid URLs.
+     * @param array<string> $urls Array of URLs to clean.
+     * @return array<string> Array of cleaned, valid URLs.
      */
-    public function clean_urls($urls)
+    public function clean_urls(array $urls): array
     {
         $clean_urls = array();
         $skipped_urls = array();
@@ -177,10 +167,10 @@ class CachemanUrlHelper
     /**
      * Clean and filter multiple URL prefixes
      *
-     * @param array $prefixes Array of URL prefixes to clean.
-     * @return array Array of cleaned, valid prefixes.
+     * @param array<string> $prefixes Array of URL prefixes to clean.
+     * @return array<string> Array of cleaned, valid prefixes.
      */
-    public function clean_prefixes($prefixes)
+    public function clean_prefixes(array $prefixes): array
     {
         $clean_prefixes = array();
         $skipped_prefixes = array();

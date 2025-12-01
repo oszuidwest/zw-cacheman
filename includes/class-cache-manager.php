@@ -9,29 +9,8 @@ namespace ZW_CACHEMAN_Core;
 /**
  * Handles the core cache purging functionality
  */
-class CachemanManager
+readonly class CachemanManager
 {
-    /**
-     * API instance
-     *
-     * @var CachemanAPI
-     */
-    private $api;
-
-    /**
-     * URL Delver instance
-     *
-     * @var CachemanUrlDelver
-     */
-    private $url_delver;
-
-    /**
-     * Logger instance
-     *
-     * @var CachemanLogger
-     */
-    private $logger;
-
     /**
      * Constructor
      *
@@ -39,25 +18,24 @@ class CachemanManager
      * @param CachemanUrlDelver $url_delver The URL delver instance.
      * @param CachemanLogger    $logger     The logger instance.
      */
-    public function __construct($api, $url_delver, $logger)
-    {
-        $this->api = $api;
-        $this->url_delver = $url_delver;
-        $this->logger = $logger;
-
+    public function __construct(
+        private CachemanAPI $api,
+        private CachemanUrlDelver $url_delver,
+        private CachemanLogger $logger
+    ) {
         // Hook into post status transitions
-        add_action('transition_post_status', [$this, 'handle_post_status_change'], 10, 3);
+        add_action('transition_post_status', $this->handle_post_status_change(...), 10, 3);
 
         // Hook into post deletion
-        add_action('before_delete_post', [$this, 'handle_post_deletion'], 10, 2);
+        add_action('before_delete_post', $this->handle_post_deletion(...), 10, 2);
 
         // Hook into taxonomy term changes
-        add_action('created_term', [$this, 'handle_term_change'], 10, 3);
-        add_action('edited_term', [$this, 'handle_term_change'], 10, 3);
-        add_action('delete_term', [$this, 'handle_term_deletion'], 10, 3);
+        add_action('created_term', $this->handle_term_change(...), 10, 3);
+        add_action('edited_term', $this->handle_term_change(...), 10, 3);
+        add_action('delete_term', $this->handle_term_deletion(...), 10, 3);
 
         // Set up cron handler
-        add_action(ZW_CACHEMAN_CRON_HOOK, [$this, 'process_queue']);
+        add_action(ZW_CACHEMAN_CRON_HOOK, $this->process_queue(...));
 
         // Check if cron is scheduled
         if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
@@ -72,9 +50,8 @@ class CachemanManager
      * @param string   $new_status New post status.
      * @param string   $old_status Old post status.
      * @param \WP_Post $post Post object.
-     * @return void
      */
-    public function handle_post_status_change($new_status, $old_status, $post)
+    public function handle_post_status_change(string $new_status, string $old_status, \WP_Post $post): void
     {
         // Skip if autosave or revision
         if (wp_is_post_autosave($post) || wp_is_post_revision($post)) {
@@ -116,9 +93,8 @@ class CachemanManager
      *
      * @param int      $post_id Post ID.
      * @param \WP_Post $post    Post object.
-     * @return void
      */
-    public function handle_post_deletion($post_id, $post)
+    public function handle_post_deletion(int $post_id, \WP_Post $post): void
     {
         // Skip if autosave or revision
         if (wp_is_post_autosave($post) || wp_is_post_revision($post)) {
@@ -148,9 +124,8 @@ class CachemanManager
      * @param int    $term_id  Term ID.
      * @param int    $tt_id    Term taxonomy ID.
      * @param string $taxonomy Taxonomy slug.
-     * @return void
      */
-    public function handle_term_change($term_id, $tt_id, $taxonomy)
+    public function handle_term_change(int $term_id, int $tt_id, string $taxonomy): void
     {
         $this->logger->debug('Manager', 'Term ' . $term_id . ' in taxonomy ' . $taxonomy . ' was created or updated');
 
@@ -192,9 +167,8 @@ class CachemanManager
      * @param int    $term_id  Term ID.
      * @param int    $tt_id    Term taxonomy ID.
      * @param string $taxonomy Taxonomy slug.
-     * @return void
      */
-    public function handle_term_deletion($term_id, $tt_id, $taxonomy)
+    public function handle_term_deletion(int $term_id, int $tt_id, string $taxonomy): void
     {
         $this->logger->debug('Manager', 'Term ' . $term_id . ' in taxonomy ' . $taxonomy . ' was deleted');
 
@@ -216,10 +190,9 @@ class CachemanManager
     /**
      * Queue purge items for later processing
      *
-     * @param array $purge_items Items to add to the queue
-     * @return void
+     * @param array<array{type: PurgeType, url: string}> $purge_items Items to add to the queue
      */
-    public function queue_purge_items($purge_items)
+    public function queue_purge_items(array $purge_items): void
     {
         if (empty($purge_items)) {
             return;
@@ -233,7 +206,7 @@ class CachemanManager
 
         // Process existing items first
         foreach ($existing_items as $item) {
-            $key = $item['type'] . '|' . $item['url'];
+            $key = $item['type']->value . '|' . $item['url'];
             if (!isset($unique_keys[$key])) {
                 $unique_keys[$key] = true;
                 $all_items[] = $item;
@@ -242,7 +215,7 @@ class CachemanManager
 
         // Add new items if not already in queue
         foreach ($purge_items as $item) {
-            $key = $item['type'] . '|' . $item['url'];
+            $key = $item['type']->value . '|' . $item['url'];
             if (!isset($unique_keys[$key])) {
                 $unique_keys[$key] = true;
                 $all_items[] = $item;
@@ -257,10 +230,8 @@ class CachemanManager
 
     /**
      * Process the queue - called by WP-Cron
-     *
-     * @return void
      */
-    public function process_queue()
+    public function process_queue(): void
     {
         $queue = get_option(ZW_CACHEMAN_QUEUE, []);
         if (empty($queue)) {

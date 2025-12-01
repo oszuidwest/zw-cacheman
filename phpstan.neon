@@ -1,6 +1,6 @@
 parameters:
   level: 5
-  phpVersion: 80200 # Minimum PHP version we support
+  phpVersion: 80300 # Minimum PHP version we support
   paths:
     - zuidwest-cache-manager.php
     - includes

@@ -13,7 +13,7 @@
     <ini name="error_reporting" value="E_ALL &#38; ~E_DEPRECATED"/>
 
     <!-- PHP Compatibility Configuration -->
-    <config name="testVersion" value="8.2-8.4"/>
+    <config name="testVersion" value="8.3-8.5"/>
 
     <rule ref="Generic.Files.EndFileNewline"/>
 
