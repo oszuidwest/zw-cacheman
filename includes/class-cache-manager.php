@@ -57,8 +57,12 @@ readonly class CachemanManager
      */
     public function log_cron_check(int|false $timestamp, ?object $next_event, string $hook): int|false
     {
-        // Only log checks for our own cron hook
-        if ($hook === ZW_CACHEMAN_CRON_HOOK) {
+        // Only log checks for our own cron hook, and only once per request
+        static $logged = false;
+
+        if ($hook === ZW_CACHEMAN_CRON_HOOK && !$logged) {
+            $logged = true;
+
             if ($timestamp) {
                 $this->logger->debug(
                     'Cron',
