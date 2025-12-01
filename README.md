@@ -9,16 +9,16 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 - **Batch Processing**: Configurable batches to avoid API rate limits
 - **Admin Interface**: Connection testing, queue management, debugging
 - **WP-Cron Integration**: Reliable scheduled processing
-- **URL Prefix Support**: Efficient cache clearing (v1.1+)
+- **URL Prefix Purging**: Uses Cloudflare's prefix purging for archives, automatically clearing paginated pages (v1.1+)
 - **Taxonomy Term Handling**: Purges cache when taxonomy terms are created, edited, or deleted (v1.3+)
 
 ## How It Works
 
 ### Immediate Purging (High Priority)
-When content changes, immediately purges post permalink, homepage, site feed, post type archive, and related API endpoints. This happens when posts are published, edited, or deleted.
+When content changes, immediately purges post permalink, homepage, post type archive, and related API endpoints. This happens when posts are published, edited, or deleted.
 
 ### Queued Purging (Low Priority)
-Collects and batch-processes taxonomy archives, author archives, API endpoints, and URL prefixes.
+Collects and batch-processes site feed, taxonomy archives, author archives, API endpoints, and URL prefixes.
 
 ### Taxonomy Term Handling
 When taxonomy terms (categories, tags, custom taxonomies) are created, updated, or deleted, automatically purges their archive pages, parent terms, and related endpoints.
@@ -94,7 +94,7 @@ Simultaneously, the plugin queues these related URLs for batch processing:
 When a post is deleted or moved to trash, the plugin handles cache purging intelligently:
 
    - Identifies if a post has a trashed status
-   - Attempts to reconstruct the original permalink by removing "_trashed" suffix
+   - Attempts to reconstruct the original permalink by removing "__trashed" suffix
    - Purges the post's permalink from cache
    - Purges related feeds and archives
    - Cleans up any API endpoints related to the deleted post
@@ -117,7 +117,6 @@ When a taxonomy term is created, edited, or deleted, the plugin performs similar
    - `https://sportsgazette.com/wp-json/wp/v2/categories/5/` (Sports category endpoint)
    - `https://sportsgazette.com/wp-json/wp/v2/categories/` (Categories collection)
    - `https://sportsgazette.com/wp-json/wp/v2/taxonomies/` (Taxonomies endpoint)
-   - `https://sportsgazette.com/wp-json/` (API root)
 
 #### Queued Low-Priority Purging
 

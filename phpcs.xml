@@ -31,7 +31,10 @@
     <!-- WordPress -->
     <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
         <properties>
-            <property name="prefixes" type="array" value="zw_cacheman_,ZW_CACHEMAN_"/>
+            <property name="prefixes" type="array">
+                <element value="zw_cacheman_"/>
+                <element value="ZW_CACHEMAN_"/>
+            </property>
         </properties>
     </rule>
     <rule ref="Generic.CodeAnalysis.EmptyPHPStatement"/>
