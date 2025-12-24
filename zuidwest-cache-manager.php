@@ -5,7 +5,9 @@
  * Description: Purges Cloudflare cache for high-priority URLs when posts are published, edited, or deleted. It also queues related taxonomy URLs for low-priority batch processing via WP-Cron.
  * Version: 1.6.1
  * Author: Streekomroep ZuidWest
- * License: GPLv3
+ * Author URI: https://www.zuidwesttv.nl
+ * License: GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires at least: 6.8
  * Requires PHP: 8.3
  * Text Domain: zw-cacheman
