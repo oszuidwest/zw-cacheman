@@ -136,8 +136,8 @@ register_uninstall_hook(__FILE__, 'zw_cacheman_uninstall');
 /**
  * Add custom cron schedule
  *
- * @param array $schedules Existing schedules.
- * @return array Modified schedules.
+ * @param array<string, array{interval: int, display: string}> $schedules Existing schedules.
+ * @return array<string, array{interval: int, display: string}> Modified schedules.
  */
 function zw_cacheman_cron_schedules($schedules)
 {
