@@ -1,7 +1,8 @@
 <?php
-
 /**
  * Cloudflare API integration class.
+ *
+ * @package ZuidWestCacheMan
  */
 
 namespace ZW_CACHEMAN_Core;
@@ -35,7 +36,7 @@ readonly class CachemanAPI
             return true;
         }
 
-        // Use URL helper to clean and validate URLs
+        // Use URL helper to clean and validate URLs.
         $clean_urls = $this->url_helper->clean_urls($urls);
 
         if (empty($clean_urls)) {
@@ -87,11 +88,11 @@ readonly class CachemanAPI
             $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error';
             $error_code = isset($body_json['errors'][0]['code']) ? $body_json['errors'][0]['code'] : 'Unknown code';
 
-            // Log the error with both HTTP and API codes
+            // Log the error with both HTTP and API codes.
             $this->logger->error('API', 'Failed to purge URLs. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error);
             $this->logger->error('API', 'Response body: ' . $body);
 
-            // Log the failed URLs
+            // Log the failed URLs.
             $this->logger->error('API', 'Failed to purge the following URLs: ' . implode(', ', array_slice($clean_urls, 0, 5)) .
                 (count($clean_urls) > 5 ? ' and ' . (count($clean_urls) - 5) . ' more.' : ''));
 
@@ -111,7 +112,7 @@ readonly class CachemanAPI
             return true;
         }
 
-        // Use URL helper to clean and validate prefixes
+        // Use URL helper to clean and validate prefixes.
         $clean_prefixes = $this->url_helper->clean_prefixes($prefixes);
 
         if (empty($clean_prefixes)) {
@@ -163,11 +164,11 @@ readonly class CachemanAPI
             $error = isset($body_json['errors'][0]['message']) ? $body_json['errors'][0]['message'] : 'Unknown error';
             $error_code = isset($body_json['errors'][0]['code']) ? $body_json['errors'][0]['code'] : 'Unknown code';
 
-            // Log the error with both HTTP and API codes
+            // Log the error with both HTTP and API codes.
             $this->logger->error('API', 'Failed to purge prefixes. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error);
             $this->logger->error('API', 'Response body: ' . $body);
 
-            // Log the failed prefixes
+            // Log the failed prefixes.
             $this->logger->error('API', 'Failed to purge the following prefixes: ' . implode(', ', array_slice($clean_prefixes, 0, 5)) .
                 (count($clean_prefixes) > 5 ? ' and ' . (count($clean_prefixes) - 5) . ' more.' : ''));
 
@@ -178,7 +179,7 @@ readonly class CachemanAPI
     /**
      * Process purge items (handles both file and prefix purging)
      *
-     * @param array<array{type: PurgeType, url: string}> $purge_items Items to purge
+     * @param array<array{type: PurgeType, url: string}> $purge_items Items to purge.
      * @return bool Success status
      */
     public function process_purge_items(array $purge_items): bool
@@ -189,7 +190,7 @@ readonly class CachemanAPI
 
         $this->logger->debug('API', 'Processing ' . count($purge_items) . ' purge items');
 
-        // Separate items by type
+        // Separate items by type.
         $files = array();
         $prefixes = array();
 
@@ -201,7 +202,7 @@ readonly class CachemanAPI
             }
         }
 
-        // Purge individual files
+        // Purge individual files.
         $files_success = true;
         if (!empty($files)) {
             $files_success = $this->purge_urls($files);
@@ -212,7 +213,7 @@ readonly class CachemanAPI
             }
         }
 
-        // Purge prefixes in batches of 30 (Cloudflare limit)
+        // Purge prefixes in batches of 30 (Cloudflare limit).
         $prefixes_success = true;
         if (!empty($prefixes)) {
             $batch_size = 30;

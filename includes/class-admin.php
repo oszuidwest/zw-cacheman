@@ -1,6 +1,8 @@
 <?php
 /**
  * Admin interface for ZuidWest Cache Manager.
+ *
+ * @package ZuidWestCacheMan
  */
 
 namespace ZW_CACHEMAN_Core;
@@ -34,7 +36,7 @@ readonly class CachemanAdmin
         private CachemanAPI $api,
         private CachemanLogger $logger
     ) {
-        // Register admin hooks
+        // Register admin hooks.
         add_action('admin_menu', $this->add_admin_menu(...));
         add_action('admin_init', $this->register_settings(...));
         add_action('admin_init', $this->handle_admin_actions(...));
@@ -50,7 +52,7 @@ readonly class CachemanAdmin
      */
     public function enqueue_admin_styles(string $hook): void
     {
-        // Only load on our settings page
+        // Only load on our settings page.
         if ('settings_page_zw_cacheman_settings' !== $hook) {
             return;
         }
@@ -82,9 +84,9 @@ readonly class CachemanAdmin
      */
     public function register_settings(): void
     {
-        // Define a static sanitize callback for better security
+        // Define a static sanitize callback for better security.
         $sanitize_callback = function ($input) {
-            // Forward to instance method while maintaining static entry point
+            // Forward to instance method while maintaining static entry point.
             return $this->sanitize_settings($input);
         };
 
@@ -107,7 +109,7 @@ readonly class CachemanAdmin
             'zw_cacheman_settings'
         );
 
-        // Add settings fields
+        // Add settings fields.
         add_settings_field(
             'zone_id',
             __('Zone ID', 'zw-cacheman'),
@@ -194,13 +196,13 @@ readonly class CachemanAdmin
         $sanitized = [];
         $old_settings = get_option(ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS);
 
-        // Sanitize text fields
+        // Sanitize text fields.
         $sanitized['zone_id'] = isset($input['zone_id']) ? sanitize_text_field($input['zone_id']) : '';
         $sanitized['api_key'] = isset($input['api_key']) && !empty($input['api_key'])
             ? sanitize_text_field($input['api_key'])
-            : $old_settings['api_key']; // Keep old API key if empty (to prevent accidental clear)
+            : $old_settings['api_key']; // Keep old API key if empty (to prevent accidental clear).
 
-        // Sanitize numeric fields
+        // Sanitize numeric fields.
         $sanitized['batch_size'] = isset($input['batch_size']) ? intval($input['batch_size']) : 30;
         if ($sanitized['batch_size'] < 1) {
             $sanitized['batch_size'] = 30;
@@ -212,10 +214,10 @@ readonly class CachemanAdmin
             );
         }
 
-        // Sanitize checkbox to boolean
+        // Sanitize checkbox to boolean.
         $sanitized['debug_mode'] = isset($input['debug_mode']) ? true : false;
 
-        // If debug mode setting changed, update the logger
+        // If debug mode setting changed, update the logger.
         if ($sanitized['debug_mode'] !== $old_settings['debug_mode']) {
             $this->logger->set_debug_mode($sanitized['debug_mode']);
 
@@ -224,7 +226,7 @@ readonly class CachemanAdmin
             }
         }
 
-        // Test API connection if credentials changed
+        // Test API connection if credentials changed.
         $credentials_changed = (
             $sanitized['zone_id'] !== $old_settings['zone_id'] ||
             $sanitized['api_key'] !== $old_settings['api_key']
@@ -234,7 +236,7 @@ readonly class CachemanAdmin
             $test_result = $this->api->test_connection($sanitized['zone_id'], $sanitized['api_key']);
 
             if ($test_result['success']) {
-                // Cache successful connection status for 1 hour
+                // Cache successful connection status for 1 hour.
                 set_transient('zw_cacheman_connection_status', 'connected', HOUR_IN_SECONDS);
 
                 add_settings_error(
@@ -244,7 +246,7 @@ readonly class CachemanAdmin
                     'success'
                 );
             } else {
-                // Clear connection status on failure
+                // Clear connection status on failure.
                 delete_transient('zw_cacheman_connection_status');
 
                 add_settings_error(
@@ -273,10 +275,10 @@ readonly class CachemanAdmin
         $queue_count = count($queue);
         $next_run = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
 
-        // Check if we have credentials
+        // Check if we have credentials.
         $has_credentials = !empty($settings['zone_id']) && !empty($settings['api_key']);
 
-        // Get cached connection status (valid for 1 hour)
+        // Get cached connection status (valid for 1 hour).
         $connection_status = get_transient('zw_cacheman_connection_status');
         $is_connected = $has_credentials && $connection_status === 'connected';
         ?>
@@ -354,7 +356,7 @@ readonly class CachemanAdmin
                                 </p>
                                 
                                 <?php
-                                $log_files = $this->logger->get_log_files(30); // Get last 30 days of logs
+                                $log_files = $this->logger->get_log_files(30); // Get last 30 days of logs.
                                 if (!empty($log_files)) :
                                     ?>
                                     <h4><?php echo esc_html__('Available Log Files:', 'zw-cacheman'); ?></h4>
@@ -380,7 +382,7 @@ readonly class CachemanAdmin
                                                         if ($log_content) {
                                                             $lines = explode("\n", trim($log_content));
                                                             $total_lines = count($lines);
-                                                            $display_lines = array_slice($lines, -100); // Show last 100 lines
+                                                            $display_lines = array_slice($lines, -100); // Show last 100 lines.
 
                                                             if ($total_lines > 100) {
                                                                 echo '<p class="zw-cacheman-log-truncated">';
@@ -526,7 +528,7 @@ readonly class CachemanAdmin
                     $this->logger->debug('Admin', 'Manual connection test initiated');
                     $result = $this->api->test_connection($settings['zone_id'], $settings['api_key']);
 
-                    // Update connection status transient
+                    // Update connection status transient.
                     if ($result['success']) {
                         set_transient('zw_cacheman_connection_status', 'connected', HOUR_IN_SECONDS);
                     } else {
@@ -545,7 +547,7 @@ readonly class CachemanAdmin
                 $this->logger->debug('Admin', 'Manual queue processing initiated');
                 $this->manager->process_queue();
 
-                // Ensure cron is scheduled
+                // Ensure cron is scheduled.
                 if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
                     wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
                     $this->logger->debug('Admin', 'Re-scheduled missing cron job');
@@ -577,7 +579,7 @@ readonly class CachemanAdmin
                 return;
         }
 
-        // Redirect back to settings page with message
+        // Redirect back to settings page with message.
         wp_safe_redirect(add_query_arg(
             array_merge(['page' => 'zw_cacheman_settings'], $redirect_args),
             admin_url('options-general.php')
@@ -594,7 +596,7 @@ readonly class CachemanAdmin
             return;
         }
 
-        // Check for status message
+        // Check for status message.
         if (isset($_GET['zw_message'])) {
             $message = sanitize_text_field(wp_unslash($_GET['zw_message']));
             $details = isset($_GET['zw_details']) ? urldecode(sanitize_text_field(wp_unslash($_GET['zw_details']))) : '';
@@ -618,7 +620,7 @@ readonly class CachemanAdmin
             }
         }
 
-        // Check if cron is scheduled
+        // Check if cron is scheduled.
         if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
             wp_admin_notice(
                 '<strong>' . esc_html__('Warning:', 'zw-cacheman') . '</strong> ' .

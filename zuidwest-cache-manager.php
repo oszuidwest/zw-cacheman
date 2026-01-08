@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Plugin Name: ZuidWest Cache Manager
  * Description: Purges Cloudflare cache for high-priority URLs when posts are published, edited, or deleted. It also queues related taxonomy URLs for low-priority batch processing via WP-Cron.
@@ -11,6 +10,8 @@
  * Requires at least: 6.8
  * Requires PHP: 8.3
  * Text Domain: zw-cacheman
+ *
+ * @package ZuidWestCacheMan
  */
 
 if (!defined('ABSPATH')) {
@@ -40,7 +41,7 @@ require_once ZW_CACHEMAN_DIR . 'includes/class-admin.php';
  */
 function zw_cacheman_init()
 {
-    // Get settings
+    // Get settings.
     $settings = get_option(ZW_CACHEMAN_SETTINGS, [
         'zone_id' => '',
         'api_key' => '',
@@ -48,14 +49,14 @@ function zw_cacheman_init()
         'debug_mode' => false
     ]);
 
-    // Create global plugin instances
+    // Create global plugin instances.
     $logger = new ZW_CACHEMAN_Core\CachemanLogger(!empty($settings['debug_mode']));
     $url_helper = new ZW_CACHEMAN_Core\CachemanUrlHelper($logger);
     $api = new ZW_CACHEMAN_Core\CachemanAPI($url_helper, $logger);
     $url_delver = new ZW_CACHEMAN_Core\CachemanUrlDelver($url_helper, $logger);
     $manager = new ZW_CACHEMAN_Core\CachemanManager($api, $url_delver, $logger);
 
-    // Only load admin interface in admin area
+    // Only load admin interface in admin area.
     if (is_admin()) {
         new ZW_CACHEMAN_Core\CachemanAdmin($manager, $api, $logger);
     }
@@ -69,7 +70,7 @@ add_action('init', 'zw_cacheman_init');
  */
 function zw_cacheman_activate()
 {
-    // Initialize default settings if they don't exist
+    // Initialize default settings if they don't exist.
     if (!get_option(ZW_CACHEMAN_SETTINGS)) {
         update_option(ZW_CACHEMAN_SETTINGS, [
             'zone_id' => '',
@@ -79,12 +80,12 @@ function zw_cacheman_activate()
         ], true);
     }
 
-    // Make sure cron is scheduled
+    // Make sure cron is scheduled.
     if (!wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK)) {
         wp_schedule_event(time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK);
     }
 
-    // Create logs directory if it doesn't exist
+    // Create logs directory if it doesn't exist.
     $upload_dir = wp_upload_dir();
     $log_dir = trailingslashit($upload_dir['basedir']) . 'zw-cacheman-logs/';
     if (!file_exists($log_dir)) {
@@ -100,7 +101,7 @@ register_activation_hook(__FILE__, 'zw_cacheman_activate');
  */
 function zw_cacheman_deactivate()
 {
-    // Clear any scheduled cron jobs
+    // Clear any scheduled cron jobs.
     $timestamp = wp_next_scheduled(ZW_CACHEMAN_CRON_HOOK);
     if ($timestamp) {
         wp_unschedule_event($timestamp, ZW_CACHEMAN_CRON_HOOK);
@@ -115,11 +116,11 @@ register_deactivation_hook(__FILE__, 'zw_cacheman_deactivate');
  */
 function zw_cacheman_uninstall()
 {
-    // Clean up all plugin data
+    // Clean up all plugin data.
     delete_option(ZW_CACHEMAN_SETTINGS);
     delete_option(ZW_CACHEMAN_QUEUE);
 
-    // Clean up log directory
+    // Clean up log directory.
     $upload_dir = wp_upload_dir();
     $log_dir = trailingslashit($upload_dir['basedir']) . 'zw-cacheman-logs/';
 

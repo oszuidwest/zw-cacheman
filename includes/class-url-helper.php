@@ -1,7 +1,8 @@
 <?php
-
 /**
  * URL validation and cleaning functionality.
+ *
+ * @package ZuidWestCacheMan
  */
 
 namespace ZW_CACHEMAN_Core;
@@ -25,18 +26,18 @@ readonly class CachemanUrlHelper
      * Clean URL by removing query string and ensuring it's valid
      *
      * @param string $url URL to clean.
-     * @param bool $add_trailing_slash Whether to add trailing slash.
+     * @param bool   $add_trailing_slash Whether to add trailing slash.
      * @return string|false Cleaned URL or false if invalid.
      */
     public function clean_url(string $url, bool $add_trailing_slash = true): string|false
     {
-        // Check if URL is valid
+        // Check if URL is valid.
         if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
             $this->logger->debug('URL Helper', 'Invalid URL: ' . print_r($url, true));
             return false;
         }
 
-        // Parse the URL and rebuild it without query string or fragment
+        // Parse the URL and rebuild it without query string or fragment.
         $parsed = parse_url($url);
         if (empty($parsed['scheme']) || empty($parsed['host'])) {
             $this->logger->debug('URL Helper', 'Missing scheme or host in URL: ' . $url);
@@ -45,19 +46,19 @@ readonly class CachemanUrlHelper
 
         $clean_url = $parsed['scheme'] . '://' . $parsed['host'];
 
-        // Add port if specified
+        // Add port if specified.
         if (!empty($parsed['port'])) {
             $clean_url .= ':' . $parsed['port'];
         }
 
-        // Add path if specified
+        // Add path if specified.
         if (!empty($parsed['path'])) {
             $clean_url .= $parsed['path'];
         } else {
             $clean_url .= '/';
         }
 
-        // Add trailing slash if requested
+        // Add trailing slash if requested.
         if ($add_trailing_slash) {
             $clean_url = trailingslashit($clean_url);
         }
@@ -73,7 +74,7 @@ readonly class CachemanUrlHelper
      */
     public function format_url_prefix(string $url): string|false
     {
-        // If the URL contains a query string character, invalid for prefix
+        // If the URL contains a query string character, invalid for prefix.
         if (strpos($url, '?') !== false) {
             $this->logger->debug('URL Helper', 'URL contains query string, invalid for prefix: ' . $url);
             return false;
@@ -85,18 +86,18 @@ readonly class CachemanUrlHelper
             return false;
         }
 
-        // Format: "www.example.com/path" (no protocol)
-        // If path is empty, use root path
+        // Format: "www.example.com/path" (no protocol).
+        // If path is empty, use root path.
         $path = !empty($parsed['path']) ? $parsed['path'] : '/';
 
-        // Return without trailing slash for prefixes
+        // Return without trailing slash for prefixes.
         return $parsed['host'] . rtrim($path, '/');
     }
 
     /**
      * Create a purge item structure for a URL
      *
-     * @param string $url The URL to create a purge item for.
+     * @param string    $url The URL to create a purge item for.
      * @param PurgeType $type The type of purge item ('file' or 'prefix').
      * @return array{type: PurgeType, url: string}|false Purge item structure or false if invalid.
      */
@@ -108,7 +109,7 @@ readonly class CachemanUrlHelper
         }
 
         if ($type === PurgeType::File) {
-            // For file URLs, add trailing slash for consistency
+            // For file URLs, add trailing slash for consistency.
             $cleaned_url = $this->clean_url($url, true);
             if (!$cleaned_url) {
                 return false;
@@ -119,7 +120,7 @@ readonly class CachemanUrlHelper
                 'url' => $cleaned_url
             );
         } elseif ($type === PurgeType::Prefix) {
-            // For prefix URLs, don't add trailing slash
+            // For prefix URLs, don't add trailing slash.
             $prefix = $this->format_url_prefix($url);
             if (!$prefix) {
                 return false;
@@ -146,7 +147,7 @@ readonly class CachemanUrlHelper
         foreach ($urls as $url) {
             $cleaned = $this->clean_url($url, true);
             if ($cleaned) {
-                // Check if this is different from the original
+                // Check if this is different from the original.
                 if ($cleaned !== $url) {
                     $this->logger->debug('URL Helper', 'Cleaned URL: ' . $url . ' → ' . $cleaned);
                 }
@@ -160,7 +161,7 @@ readonly class CachemanUrlHelper
             $this->logger->debug('URL Helper', 'Skipped ' . count($skipped_urls) . ' invalid URLs');
         }
 
-        // Remove duplicates
+        // Remove duplicates.
         return array_values(array_unique($clean_urls));
     }
 
@@ -180,7 +181,7 @@ readonly class CachemanUrlHelper
                 continue;
             }
 
-            // If the prefix contains a query string character, skip it
+            // If the prefix contains a query string character, skip it.
             if (strpos($prefix, '?') !== false) {
                 $skipped_prefixes[] = $prefix;
                 $this->logger->debug('URL Helper', 'Skipping prefix with query string: ' . $prefix);
@@ -194,7 +195,7 @@ readonly class CachemanUrlHelper
             $this->logger->debug('URL Helper', 'Skipped ' . count($skipped_prefixes) . ' prefixes with query strings');
         }
 
-        // Remove duplicates
+        // Remove duplicates.
         return array_values(array_unique($clean_prefixes));
     }
 }

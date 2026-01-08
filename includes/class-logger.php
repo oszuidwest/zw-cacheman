@@ -1,7 +1,8 @@
 <?php
-
 /**
  * Logger functionality for ZuidWest Cache Manager.
+ *
+ * @package ZuidWestCacheMan
  */
 
 namespace ZW_CACHEMAN_Core;
@@ -11,7 +12,18 @@ namespace ZW_CACHEMAN_Core;
  */
 class CachemanLogger
 {
+    /**
+     * Whether debug mode is enabled.
+     *
+     * @var bool
+     */
     private bool $debug_mode;
+
+    /**
+     * The log directory path.
+     *
+     * @var string
+     */
     private readonly string $log_dir;
 
     /**
@@ -23,11 +35,11 @@ class CachemanLogger
     {
         $this->debug_mode = $debug_mode;
 
-        // Set up log directory (inside wp-content/uploads)
+        // Set up log directory (inside wp-content/uploads).
         $upload_dir = wp_upload_dir();
         $this->log_dir = trailingslashit($upload_dir['basedir']) . 'zw-cacheman-logs/';
 
-        // Create log directory if it doesn't exist
+        // Create log directory if it doesn't exist.
         if (!file_exists($this->log_dir)) {
             wp_mkdir_p($this->log_dir);
         }
@@ -59,7 +71,7 @@ class CachemanLogger
         $timestamp = current_time('Y-m-d H:i:s');
         $log_message = '[' . $timestamp . '] [' . $source . '] ' . $message . PHP_EOL;
 
-        // Append to the log file
+        // Append to the log file.
         file_put_contents($filename, $log_message, FILE_APPEND);
     }
 
@@ -71,16 +83,16 @@ class CachemanLogger
      */
     public function error(string $source, string $message): void
     {
-        // Always log errors to PHP error log
+        // Always log errors to PHP error log.
         error_log('[ZW Cacheman ERROR] [' . $source . '] ' . $message);
 
-        // Also log errors to our debug log if debug mode is enabled
+        // Also log errors to our debug log if debug mode is enabled.
         if ($this->debug_mode) {
             $filename = $this->log_dir . 'debug-' . current_time('Y-m-d') . '.log';
             $timestamp = current_time('Y-m-d H:i:s');
             $log_message = '[' . $timestamp . '] [ERROR] [' . $source . '] ' . $message . PHP_EOL;
 
-            // Append to the log file
+            // Append to the log file.
             file_put_contents($filename, $log_message, FILE_APPEND);
         }
     }
@@ -112,10 +124,10 @@ class CachemanLogger
             return [];
         }
 
-        // Sort files by name descending (newest first)
+        // Sort files by name descending (newest first).
         rsort($files);
 
-        // Limit number of files returned
+        // Limit number of files returned.
         return array_slice($files, 0, $limit);
     }
 
