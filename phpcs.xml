@@ -53,4 +53,7 @@
     <rule ref="WordPress.WP">
         <exclude name="WordPress.DateTime.RestrictedFunctions"/>
     </rule>
+
+    <!-- WordPress documentation standards -->
+    <rule ref="WordPress-Docs"/>
 </ruleset>
