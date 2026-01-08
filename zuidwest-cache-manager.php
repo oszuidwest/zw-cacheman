@@ -17,14 +17,14 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
 }
 
-// Define plugin constants
+// Defines plugin constants.
 define('ZW_CACHEMAN_DIR', plugin_dir_path(__FILE__));
 define('ZW_CACHEMAN_URL', plugin_dir_url(__FILE__));
 define('ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue');
 define('ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings');
 define('ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook');
 
-// Include required files
+// Includes required files.
 require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
 require_once ZW_CACHEMAN_DIR . 'includes/class-logger.php';
 require_once ZW_CACHEMAN_DIR . 'includes/class-url-helper.php';
@@ -34,7 +34,7 @@ require_once ZW_CACHEMAN_DIR . 'includes/class-cache-manager.php';
 require_once ZW_CACHEMAN_DIR . 'includes/class-admin.php';
 
 /**
- * Initialize the plugin on WordPress init
+ * Initializes the plugin on WordPress init.
  *
  * @return void
  */
@@ -63,7 +63,7 @@ function zw_cacheman_init()
 add_action('init', 'zw_cacheman_init');
 
 /**
- * Plugin activation hook
+ * Activates the plugin and initializes default settings.
  *
  * @return void
  */
@@ -94,7 +94,7 @@ function zw_cacheman_activate()
 register_activation_hook(__FILE__, 'zw_cacheman_activate');
 
 /**
- * Plugin deactivation hook
+ * Clears scheduled cron jobs on plugin deactivation.
  *
  * @return void
  */
@@ -109,7 +109,7 @@ function zw_cacheman_deactivate()
 register_deactivation_hook(__FILE__, 'zw_cacheman_deactivate');
 
 /**
- * Plugin uninstall hook
+ * Removes all plugin data on uninstall.
  *
  * @return void
  */
@@ -136,7 +136,7 @@ function zw_cacheman_uninstall()
 register_uninstall_hook(__FILE__, 'zw_cacheman_uninstall');
 
 /**
- * Add custom cron schedule
+ * Adds a custom cron schedule for minute-level processing.
  *
  * @param array<string, array{interval: int, display: string}> $schedules Existing schedules.
  * @return array<string, array{interval: int, display: string}> Modified schedules.

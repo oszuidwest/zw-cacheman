@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Logger functionality for ZuidWest Cache Manager
+ * Logger functionality for ZuidWest Cache Manager.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Handles all logging functionality
+ * Handles all logging functionality.
  */
 class CachemanLogger
 {

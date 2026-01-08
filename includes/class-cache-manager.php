@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Core Cache Manager functionality
+ * Core Cache Manager functionality.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Handles the core cache purging functionality
+ * Handles the core cache purging functionality.
  */
 readonly class CachemanManager
 {

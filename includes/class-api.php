@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Cloudflare API integration class
+ * Cloudflare API integration class.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * API handler for Cloudflare cache purging
+ * API handler for Cloudflare cache purging.
  */
 readonly class CachemanAPI
 {

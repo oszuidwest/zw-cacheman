@@ -1,12 +1,12 @@
 <?php
 /**
- * Admin interface for ZuidWest Cache Manager
+ * Admin interface for ZuidWest Cache Manager.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Handles the admin interface and settings
+ * Handles the admin interface and settings.
  */
 readonly class CachemanAdmin
 {
@@ -43,9 +43,10 @@ readonly class CachemanAdmin
     }
 
     /**
-     * Enqueue admin styles
+     * Enqueues admin styles on plugin pages.
      *
      * @param string $hook The current admin page.
+     * @return void
      */
     public function enqueue_admin_styles(string $hook): void
     {

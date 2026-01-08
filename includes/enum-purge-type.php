@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Purge type enum for cache purging operations
+ * Purge type enum for cache purging operations.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Represents the type of cache purge operation
+ * Represents the type of cache purge operation.
  */
 enum PurgeType: string
 {

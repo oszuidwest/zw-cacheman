@@ -1,13 +1,13 @@
 <?php
 
 /**
- * URL validation and cleaning functionality
+ * URL validation and cleaning functionality.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Centralized URL validation and formatting
+ * Centralized URL validation and formatting.
  */
 readonly class CachemanUrlHelper
 {

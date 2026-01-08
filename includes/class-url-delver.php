@@ -1,13 +1,13 @@
 <?php
 
 /**
- * URL detection and retrieval functionality
+ * URL detection and retrieval functionality.
  */
 
 namespace ZW_CACHEMAN_Core;
 
 /**
- * Handles detection and extraction of URLs for cache purging
+ * Handles detection and extraction of URLs for cache purging.
  */
 readonly class CachemanUrlDelver
 {
