@@ -21,7 +21,7 @@ readonly class CachemanAdmin
      *
      * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string}
      */
-    private const array DEFAULT_SETTINGS = [
+    public const array DEFAULT_SETTINGS = [
         'zone_id'      => '',
         'api_key'      => '',
         'batch_size'   => 30,

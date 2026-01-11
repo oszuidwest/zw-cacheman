@@ -366,22 +366,10 @@ readonly class CachemanUrlDelver
             }
         }
 
-        // Remove duplicates based on URL and type.
-        $unique_items = [];
-        $seen_keys = [];
+        // Remove duplicates based on URL and type, then duplicate for extra domains.
+        $unique_items = $this->deduplicate_purge_items($purge_items);
 
-        foreach ($purge_items as $item) {
-            $key = $item['type']->value . '|' . $item['url'];
-            if (!isset($seen_keys[$key])) {
-                $seen_keys[$key] = true;
-                $unique_items[] = $item;
-            }
-        }
-
-        // Duplicate URLs for extra domains.
-        $duplicated_items = $this->duplicate_for_extra_domains($unique_items);
-
-        return $duplicated_items;
+        return $this->duplicate_for_extra_domains($unique_items);
     }
 
     /**
@@ -424,16 +412,28 @@ readonly class CachemanUrlDelver
         }
 
         // Remove duplicates again after duplication.
-        $unique_duplicated = [];
+        return $this->deduplicate_purge_items($duplicated_items);
+    }
+
+    /**
+     * Remove duplicate purge items based on type and URL
+     *
+     * @param array<array{type: PurgeType, url: string}> $items Purge items to deduplicate.
+     * @return array<array{type: PurgeType, url: string}> Deduplicated purge items.
+     */
+    private function deduplicate_purge_items(array $items): array
+    {
+        $unique_items = [];
         $seen_keys = [];
-        foreach ($duplicated_items as $item) {
+
+        foreach ($items as $item) {
             $key = $item['type']->value . '|' . $item['url'];
             if (!isset($seen_keys[$key])) {
                 $seen_keys[$key] = true;
-                $unique_duplicated[] = $item;
+                $unique_items[] = $item;
             }
         }
 
-        return $unique_duplicated;
+        return $unique_items;
     }
 }
