@@ -40,12 +40,6 @@
     <rule ref="WordPress-Extra">
         <!-- Allow short array syntax -->
         <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
-        <!-- Allow non-Yoda conditions -->
-        <exclude name="WordPress.PHP.YodaConditions"/>
-        <!-- Allow short ternary -->
-        <exclude name="Universal.Operators.DisallowShortTernary"/>
-        <!-- Allow our class-*.php naming convention -->
-        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
     </rule>
 
     <!-- PHP Compatibility -->

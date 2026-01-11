@@ -64,7 +64,7 @@ readonly class CachemanManager {
 		// Only log checks for our own cron hook, and only once per request.
 		static $logged = false;
 
-		if ( $hook === ZW_CACHEMAN_CRON_HOOK && ! $logged ) {
+		if ( ZW_CACHEMAN_CRON_HOOK === $hook && ! $logged ) {
 			$logged = true;
 
 			if ( $timestamp ) {

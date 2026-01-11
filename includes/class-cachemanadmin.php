@@ -343,7 +343,7 @@ readonly class CachemanAdmin {
 
 		// Get cached connection status (valid for 1 hour).
 		$connection_status = get_transient( 'zw_cacheman_connection_status' );
-		$is_connected      = $has_credentials && $connection_status === 'connected';
+		$is_connected      = $has_credentials && 'connected' === $connection_status;
 		?>
 		<div class="wrap zw-cacheman-wrap">
 			<h1><?php echo esc_html__( 'ZuidWest Cache Manager', 'zw-cacheman' ); ?></h1>
@@ -656,7 +656,7 @@ readonly class CachemanAdmin {
 	 * Display admin notices
 	 */
 	public function admin_notices(): void {
-		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'zw_cacheman_settings' ) {
+		if ( ! isset( $_GET['page'] ) || 'zw_cacheman_settings' !== $_GET['page'] ) {
 			return;
 		}
 

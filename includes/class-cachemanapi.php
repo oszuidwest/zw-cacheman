@@ -212,9 +212,9 @@ readonly class CachemanAPI {
 		$prefixes = array();
 
 		foreach ( $purge_items as $item ) {
-			if ( $item['type'] === PurgeType::File ) {
+			if ( PurgeType::File === $item['type'] ) {
 				$files[] = $item['url'];
-			} elseif ( $item['type'] === PurgeType::Prefix ) {
+			} elseif ( PurgeType::Prefix === $item['type'] ) {
 				$prefixes[] = $item['url'];
 			}
 		}

@@ -37,7 +37,7 @@ readonly class CachemanUrlDelver {
 	public function get_high_priority_purge_items( \WP_Post $post ): array {
 		$urls = [];
 		// Log if we're working with a trashed post.
-		if ( $post->post_status === 'trash' ) {
+		if ( 'trash' === $post->post_status ) {
 			$this->logger->debug( 'URL Delver', 'Working with tashed post ' . $post->ID . ', will try to resurrect original permalink' );
 
 			// For trashed posts, skip current permalink and go straight to recovery.
@@ -494,7 +494,7 @@ readonly class CachemanUrlDelver {
 			$type         = $item['type'];
 
 			foreach ( $extra_domains_array as $extra_domain ) {
-				$is_prefix = $type === PurgeType::Prefix;
+				$is_prefix = PurgeType::Prefix === $type;
 				$new_url   = $this->url_helper->replace_host( $original_url, $extra_domain, $is_prefix );
 				if ( $new_url && $new_url !== $original_url ) {
 					$duplicated_items[] = [

@@ -143,7 +143,7 @@ readonly class CachemanUrlHelper {
 			return false;
 		}
 
-		if ( $type === PurgeType::File ) {
+		if ( PurgeType::File === $type ) {
 			// For file URLs, add trailing slash for consistency.
 			$cleaned_url = $this->clean_url( $url, true );
 			if ( ! $cleaned_url ) {
@@ -154,7 +154,7 @@ readonly class CachemanUrlHelper {
 				'type' => PurgeType::File,
 				'url'  => $cleaned_url,
 			);
-		} elseif ( $type === PurgeType::Prefix ) {
+		} elseif ( PurgeType::Prefix === $type ) {
 			// For prefix URLs, don't add trailing slash.
 			$prefix = $this->format_url_prefix( $url );
 			if ( ! $prefix ) {

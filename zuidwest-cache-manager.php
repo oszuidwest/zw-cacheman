@@ -27,12 +27,12 @@ define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
 
 // Includes required files.
 require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
-require_once ZW_CACHEMAN_DIR . 'includes/class-logger.php';
-require_once ZW_CACHEMAN_DIR . 'includes/class-url-helper.php';
-require_once ZW_CACHEMAN_DIR . 'includes/class-api.php';
-require_once ZW_CACHEMAN_DIR . 'includes/class-url-delver.php';
-require_once ZW_CACHEMAN_DIR . 'includes/class-cache-manager.php';
-require_once ZW_CACHEMAN_DIR . 'includes/class-admin.php';
+require_once ZW_CACHEMAN_DIR . 'includes/class-cachemanlogger.php';
+require_once ZW_CACHEMAN_DIR . 'includes/class-cachemanurlhelper.php';
+require_once ZW_CACHEMAN_DIR . 'includes/class-cachemanapi.php';
+require_once ZW_CACHEMAN_DIR . 'includes/class-cachemanurldelver.php';
+require_once ZW_CACHEMAN_DIR . 'includes/class-cachemanmanager.php';
+require_once ZW_CACHEMAN_DIR . 'includes/class-cachemanadmin.php';
 
 /**
  * Initializes the plugin on WordPress init.
