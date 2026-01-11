@@ -7,15 +7,15 @@
 
 namespace ZW_CACHEMAN_Core;
 
-if (!defined('ABSPATH')) {
-    exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
 
 /**
  * Represents the type of cache purge operation.
  */
-enum PurgeType: string
-{
-    case File = 'file';
-    case Prefix = 'prefix';
+enum PurgeType: string {
+
+	case File   = 'file';
+	case Prefix = 'prefix';
 }
