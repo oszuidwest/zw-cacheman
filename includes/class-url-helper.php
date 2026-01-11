@@ -7,6 +7,10 @@
 
 namespace ZW_CACHEMAN_Core;
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 /**
  * Centralized URL validation and formatting.
  */
