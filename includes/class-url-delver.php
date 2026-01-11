@@ -366,11 +366,67 @@ readonly class CachemanUrlDelver
             }
         }
 
-        // Remove duplicates based on URL and type.
+        // Remove duplicates based on URL and type, then duplicate for extra domains.
+        $unique_items = $this->deduplicate_purge_items($purge_items);
+
+        return $this->duplicate_for_extra_domains($unique_items);
+    }
+
+    /**
+     * Duplicate purge items for extra domains
+     *
+     * @param array<array{type: PurgeType, url: string}> $items Original purge items.
+     * @return array<array{type: PurgeType, url: string}> Duplicated purge items.
+     */
+    private function duplicate_for_extra_domains(array $items): array
+    {
+        $settings = get_option(ZW_CACHEMAN_SETTINGS, []);
+        $extra_domains = !empty($settings['extra_domains']) ? $settings['extra_domains'] : '';
+        if (empty($extra_domains)) {
+            return $items;
+        }
+
+        $extra_domains_array = array_map('trim', explode(',', $extra_domains));
+        $extra_domains_array = array_filter($extra_domains_array); // Remove empty entries.
+
+        if (empty($extra_domains_array)) {
+            return $items;
+        }
+
+        $duplicated_items = $items; // Start with originals.
+
+        foreach ($items as $item) {
+            $original_url = $item['url'];
+            $type = $item['type'];
+
+            foreach ($extra_domains_array as $extra_domain) {
+                $is_prefix = $type === PurgeType::Prefix;
+                $new_url = $this->url_helper->replace_host($original_url, $extra_domain, $is_prefix);
+                if ($new_url && $new_url !== $original_url) {
+                    $duplicated_items[] = [
+                        'type' => $type,
+                        'url' => $new_url
+                    ];
+                }
+            }
+        }
+
+        // Remove duplicates again after duplication.
+        return $this->deduplicate_purge_items($duplicated_items);
+    }
+
+    /**
+     * Remove duplicate purge items based on type and URL
+     *
+     * @param array<array{type: PurgeType, url: string}> $items Purge items to deduplicate.
+     * @return array<array{type: PurgeType, url: string}> Deduplicated purge items.
+     */
+    private function deduplicate_purge_items(array $items): array
+    {
         $unique_items = [];
         $seen_keys = [];
 
-        foreach ($purge_items as $item) {
+        foreach ($items as $item) {
             $key = $item['type']->value . '|' . $item['url'];
             if (!isset($seen_keys[$key])) {
                 $seen_keys[$key] = true;

@@ -42,12 +42,7 @@ require_once ZW_CACHEMAN_DIR . 'includes/class-admin.php';
 function zw_cacheman_init()
 {
     // Get settings.
-    $settings = get_option(ZW_CACHEMAN_SETTINGS, [
-        'zone_id' => '',
-        'api_key' => '',
-        'batch_size' => 30,
-        'debug_mode' => false
-    ]);
+    $settings = get_option(ZW_CACHEMAN_SETTINGS, ZW_CACHEMAN_Core\CachemanAdmin::DEFAULT_SETTINGS);
 
     // Create global plugin instances.
     $logger = new ZW_CACHEMAN_Core\CachemanLogger(!empty($settings['debug_mode']));
@@ -72,12 +67,7 @@ function zw_cacheman_activate()
 {
     // Initialize default settings if they don't exist.
     if (!get_option(ZW_CACHEMAN_SETTINGS)) {
-        update_option(ZW_CACHEMAN_SETTINGS, [
-            'zone_id' => '',
-            'api_key' => '',
-            'batch_size' => 30,
-            'debug_mode' => false
-        ], true);
+        update_option(ZW_CACHEMAN_SETTINGS, ZW_CACHEMAN_Core\CachemanAdmin::DEFAULT_SETTINGS, true);
     }
 
     // Make sure cron is scheduled.
