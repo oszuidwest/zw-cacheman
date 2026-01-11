@@ -55,5 +55,8 @@
     </rule>
 
     <!-- WordPress documentation standards -->
-    <rule ref="WordPress-Docs"/>
+    <rule ref="WordPress-Docs">
+        <!-- PHPStan type aliases aren't real PHP types -->
+        <exclude name="Squiz.Commenting.FunctionComment.IncorrectTypeHint"/>
+    </rule>
 </ruleset>
