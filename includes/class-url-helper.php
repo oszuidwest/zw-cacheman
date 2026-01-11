@@ -88,21 +88,21 @@ readonly class CachemanUrlHelper
             return null;
         }
 
-        // Build the new URL from components (same pattern as clean_url).
+        $path = $parsed['path'] ?? '/';
+
+        // For prefixes, return host + path without scheme or trailing slash.
+        if ($is_prefix) {
+            return $new_host . rtrim($path, '/');
+        }
+
+        // Build full URL with scheme, host, optional port, and path.
         $new_url = ($parsed['scheme'] ?? 'https') . '://' . $new_host;
 
         if (!empty($parsed['port'])) {
             $new_url .= ':' . $parsed['port'];
         }
 
-        $new_url .= $parsed['path'] ?? '/';
-
-        // For prefixes, return without scheme and without trailing slash.
-        if ($is_prefix) {
-            return $new_host . rtrim($parsed['path'] ?? '', '/');
-        }
-
-        return $new_url;
+        return $new_url . $path;
     }
 
     /**

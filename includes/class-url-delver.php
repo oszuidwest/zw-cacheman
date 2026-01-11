@@ -412,7 +412,8 @@ readonly class CachemanUrlDelver
             $type = $item['type'];
 
             foreach ($extra_domains_array as $extra_domain) {
-                $new_url = $this->replace_domain_in_url($original_url, $type, $extra_domain);
+                $is_prefix = $type === PurgeType::Prefix;
+                $new_url = $this->url_helper->replace_host($original_url, $extra_domain, $is_prefix);
                 if ($new_url && $new_url !== $original_url) {
                     $duplicated_items[] = [
                         'type' => $type,
@@ -434,22 +435,5 @@ readonly class CachemanUrlDelver
         }
 
         return $unique_duplicated;
-    }
-
-    /**
-     * Replace the domain in a URL for a given type
-     *
-     * @param string    $url        The original URL.
-     * @param PurgeType $type       The purge type.
-     * @param string    $new_domain The new domain to replace with.
-     * @return string|null The modified URL or null if invalid.
-     */
-    private function replace_domain_in_url(string $url, PurgeType $type, string $new_domain): ?string
-    {
-        return $this->url_helper->replace_host(
-            $url,
-            $new_domain,
-            $type === PurgeType::Prefix
-        );
     }
 }

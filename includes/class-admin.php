@@ -231,13 +231,18 @@ readonly class CachemanAdmin
         // Sanitize checkbox to boolean.
         $sanitized['debug_mode'] = isset($input['debug_mode']) ? true : false;
 
-        // Sanitize extra domains - validate each as a hostname.
-        $extra_domains = isset($input['extra_domains']) ? sanitize_text_field($input['extra_domains']) : '';
-        if (!empty($extra_domains)) {
-            $domains = array_map('trim', explode(',', $extra_domains));
+        // Sanitize extra domains and validate each as a hostname.
+        $extra_domains_input = isset($input['extra_domains']) ? sanitize_text_field($input['extra_domains']) : '';
+
+        if (empty($extra_domains_input)) {
+            $sanitized['extra_domains'] = '';
+        } else {
+            $domains = array_map('trim', explode(',', $extra_domains_input));
             $valid_domains = array_filter($domains, function (string $domain): bool {
-                return !empty($domain)
-                    && filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
+                if (empty($domain)) {
+                    return false;
+                }
+                return filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
             });
             $sanitized['extra_domains'] = implode(',', $valid_domains);
 
@@ -260,8 +265,6 @@ readonly class CachemanAdmin
                     'warning'
                 );
             }
-        } else {
-            $sanitized['extra_domains'] = '';
         }
 
         // If debug mode setting changed, update the logger.
