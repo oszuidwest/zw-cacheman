@@ -276,7 +276,7 @@ readonly class CachemanManager {
 		$items_to_process = array_slice( $queue, 0, $batch_size );
 		$remaining_items  = array_slice( $queue, $batch_size );
 
-		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items from queue (' . count( $remaining_items ) . ' items will remain)' );
+		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items (' . count( $remaining_items ) . ' remaining)' );
 
 		// Process the batch using the API's process_purge_items method.
 		$success = $this->api->process_purge_items( $items_to_process );

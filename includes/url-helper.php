@@ -36,12 +36,13 @@ readonly class CachemanUrlHelper {
 	public function clean_url( string $url, bool $add_trailing_slash = true ): string|false {
 		// Check if URL is valid.
 		if ( empty( $url ) || ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Debug logging.
 			$this->logger->debug( 'URL Helper', 'Invalid URL: ' . print_r( $url, true ) );
 			return false;
 		}
 
 		// Parse the URL and rebuild it without query string or fragment.
-		$parsed = parse_url( $url );
+		$parsed = wp_parse_url( $url );
 		if ( empty( $parsed['scheme'] ) || empty( $parsed['host'] ) ) {
 			$this->logger->debug( 'URL Helper', 'Missing scheme or host in URL: ' . $url );
 			return false;
@@ -81,7 +82,7 @@ readonly class CachemanUrlHelper {
 		// For prefixes, temporarily add scheme to parse.
 		$url_to_parse = $is_prefix ? 'https://' . $url : $url;
 
-		$parsed = parse_url( $url_to_parse );
+		$parsed = wp_parse_url( $url_to_parse );
 		if ( empty( $parsed['host'] ) ) {
 			return null;
 		}
@@ -116,7 +117,7 @@ readonly class CachemanUrlHelper {
 			return false;
 		}
 
-		$parsed = parse_url( $url );
+		$parsed = wp_parse_url( $url );
 		if ( empty( $parsed['host'] ) ) {
 			$this->logger->debug( 'URL Helper', 'Missing host in URL: ' . $url );
 			return false;

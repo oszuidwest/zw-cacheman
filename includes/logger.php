@@ -72,7 +72,7 @@ class CachemanLogger {
 		$timestamp   = current_time( 'Y-m-d H:i:s' );
 		$log_message = '[' . $timestamp . '] [' . $source . '] ' . $message . PHP_EOL;
 
-		// Append to the log file.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Direct file write for logging.
 		file_put_contents( $filename, $log_message, FILE_APPEND );
 	}
 
@@ -83,7 +83,7 @@ class CachemanLogger {
 	 * @param string $message The error message to log.
 	 */
 	public function error( string $source, string $message ): void {
-		// Always log errors to PHP error log.
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Intentional error logging.
 		error_log( '[ZW Cacheman ERROR] [' . $source . '] ' . $message );
 
 		// Also log errors to our debug log if debug mode is enabled.
@@ -92,7 +92,7 @@ class CachemanLogger {
 			$timestamp   = current_time( 'Y-m-d H:i:s' );
 			$log_message = '[' . $timestamp . '] [ERROR] [' . $source . '] ' . $message . PHP_EOL;
 
-			// Append to the log file.
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Direct file write for logging.
 			file_put_contents( $filename, $log_message, FILE_APPEND );
 		}
 	}
@@ -146,9 +146,7 @@ class CachemanLogger {
 
 		$success = true;
 		foreach ( $files as $file ) {
-			if ( ! unlink( $file ) ) {
-				$success = false;
-			}
+			wp_delete_file( $file );
 		}
 
 		return $success;

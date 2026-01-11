@@ -180,7 +180,7 @@ readonly class CachemanAPI {
 			$error_code = isset( $body_json['errors'][0]['code'] ) ? $body_json['errors'][0]['code'] : 'Unknown code';
 
 			// Log the error with both HTTP and API codes.
-			$this->logger->error( 'API', 'Failed to purge prefixes. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error );
+			$this->logger->error( 'API', 'Failed to purge prefixes. Code: ' . $response_code . ', Error: ' . $error_code . ' - ' . $error );
 			$this->logger->error( 'API', 'Response body: ' . $body );
 
 			// Log the failed prefixes.
