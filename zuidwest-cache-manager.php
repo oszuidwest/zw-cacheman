@@ -46,7 +46,8 @@ function zw_cacheman_init()
         'zone_id' => '',
         'api_key' => '',
         'batch_size' => 30,
-        'debug_mode' => false
+        'debug_mode' => false,
+        'extra_domains' => ''
     ]);
 
     // Create global plugin instances.
@@ -76,7 +77,8 @@ function zw_cacheman_activate()
             'zone_id' => '',
             'api_key' => '',
             'batch_size' => 30,
-            'debug_mode' => false
+            'debug_mode' => false,
+            'extra_domains' => ''
         ], true);
     }
 

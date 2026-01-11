@@ -374,6 +374,92 @@ readonly class CachemanUrlDelver
             }
         }
 
-        return $unique_items;
+        // Duplicate URLs for extra domains.
+        $duplicated_items = $this->duplicate_for_extra_domains($unique_items);
+
+        return $duplicated_items;
+    }
+
+    /**
+     * Duplicate purge items for extra domains
+     *
+     * @param array<array{type: PurgeType, url: string}> $items Original purge items.
+     * @return array<array{type: PurgeType, url: string}> Duplicated purge items.
+     */
+    private function duplicate_for_extra_domains(array $items): array
+    {
+        $settings = get_option(ZW_CACHEMAN_SETTINGS, []);
+        $extra_domains = !empty($settings['extra_domains']) ? $settings['extra_domains'] : '';
+        if (empty($extra_domains)) {
+            return $items;
+        }
+
+        $extra_domains_array = array_map('trim', explode(',', $extra_domains));
+        $extra_domains_array = array_filter($extra_domains_array); // Remove empty entries.
+
+        if (empty($extra_domains_array)) {
+            return $items;
+        }
+
+        $duplicated_items = $items; // Start with originals.
+
+        foreach ($items as $item) {
+            $original_url = $item['url'];
+            $type = $item['type'];
+
+            foreach ($extra_domains_array as $extra_domain) {
+                $new_url = $this->replace_domain_in_url($original_url, $type, $extra_domain);
+                if ($new_url && $new_url !== $original_url) {
+                    $duplicated_items[] = [
+                        'type' => $type,
+                        'url' => $new_url
+                    ];
+                }
+            }
+        }
+
+        // Remove duplicates again after duplication.
+        $unique_duplicated = [];
+        $seen_keys = [];
+        foreach ($duplicated_items as $item) {
+            $key = $item['type']->value . '|' . $item['url'];
+            if (!isset($seen_keys[$key])) {
+                $seen_keys[$key] = true;
+                $unique_duplicated[] = $item;
+            }
+        }
+
+        return $unique_duplicated;
+    }
+
+    /**
+     * Replace the domain in a URL for a given type
+     *
+     * @param string    $url   The original URL.
+     * @param PurgeType $type  The purge type.
+     * @param string    $new_domain The new domain to replace with.
+     * @return string|null The modified URL or null if invalid.
+     */
+    private function replace_domain_in_url(string $url, PurgeType $type, string $new_domain): ?string
+    {
+        if ($type === PurgeType::File) {
+            // For full URLs, parse and replace host.
+            $parsed = parse_url($url);
+            if (empty($parsed['host'])) {
+                return null;
+            }
+            $original_host = $parsed['host'];
+            $new_url = str_replace($original_host, $new_domain, $url);
+            return $new_url;
+        } elseif ($type === PurgeType::Prefix) {
+            // For prefixes, replace at the beginning.
+            $parsed = parse_url('https://' . $url); // Temporarily add protocol to parse.
+            if (empty($parsed['host'])) {
+                return null;
+            }
+            $original_host = $parsed['host'];
+            $new_prefix = str_replace($original_host, $new_domain, $url);
+            return $new_prefix;
+        }
     }
 }

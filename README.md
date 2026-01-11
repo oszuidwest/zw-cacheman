@@ -166,6 +166,7 @@ Configure the plugin under Settings → ZuidWest Cache:
 - **Zone ID**: Cloudflare Zone ID
 - **API Key**: Cloudflare API key with cache purging permissions
 - **Batch Size**: URLs per batch (default: 30)
+- **Extra Domains**: Comma-separated list of additional domains to purge (e.g., app.example.com,www.example.com). URLs will be duplicated for these domains.
 - **Debug Mode**: Enable logging
 
 ## Known Limitations

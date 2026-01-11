@@ -15,13 +15,14 @@ readonly class CachemanAdmin
     /**
      * Default settings
      *
-     * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool}
+     * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string}
      */
     private const array DEFAULT_SETTINGS = [
-        'zone_id'    => '',
-        'api_key'    => '',
-        'batch_size' => 30,
-        'debug_mode' => false
+        'zone_id'      => '',
+        'api_key'      => '',
+        'batch_size'   => 30,
+        'debug_mode'   => false,
+        'extra_domains' => ''
     ];
 
     /**
@@ -145,6 +146,15 @@ readonly class CachemanAdmin
             'zw_cacheman_main_section',
             ['name' => 'debug_mode', 'type' => 'checkbox']
         );
+
+        add_settings_field(
+            'extra_domains',
+            __('Extra Domains', 'zw-cacheman'),
+            $this->render_field(...),
+            'zw_cacheman_settings',
+            'zw_cacheman_main_section',
+            ['name' => 'extra_domains', 'type' => 'text']
+        );
     }
 
     /**
@@ -189,7 +199,7 @@ readonly class CachemanAdmin
      * Sanitize settings
      *
      * @param array<string, mixed> $input Raw input values.
-     * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool} Sanitized values.
+     * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string} Sanitized values.
      */
     public function sanitize_settings(array $input): array
     {
@@ -216,6 +226,9 @@ readonly class CachemanAdmin
 
         // Sanitize checkbox to boolean.
         $sanitized['debug_mode'] = isset($input['debug_mode']) ? true : false;
+
+        // Sanitize extra domains.
+        $sanitized['extra_domains'] = isset($input['extra_domains']) ? sanitize_text_field($input['extra_domains']) : '';
 
         // If debug mode setting changed, update the logger.
         if ($sanitized['debug_mode'] !== $old_settings['debug_mode']) {
