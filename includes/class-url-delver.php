@@ -7,6 +7,10 @@
 
 namespace ZW_CACHEMAN_Core;
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 /**
  * Handles detection and extraction of URLs for cache purging.
  */
