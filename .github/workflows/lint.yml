@@ -56,3 +56,4 @@ jobs:
             plugin_review_phpcs
             file_type
             plugin_readme
+          exclude-files: phpstan-bootstrap.php
