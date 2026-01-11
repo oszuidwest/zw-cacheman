@@ -1,3 +1,7 @@
 .DS_Store
 /vendor/
 composer.lock
+
+# Markdown files (except README)
+*.md
+!README.md

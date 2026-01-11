@@ -40,6 +40,8 @@
     <rule ref="WordPress-Extra">
         <!-- Allow short array syntax -->
         <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
+        <!-- Allow clean filenames for class files (we use OOP) -->
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
     </rule>
 
     <!-- PHP Compatibility -->
