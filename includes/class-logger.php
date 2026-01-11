@@ -7,6 +7,10 @@
 
 namespace ZW_CACHEMAN_Core;
 
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 /**
  * Handles all logging functionality.
  */
