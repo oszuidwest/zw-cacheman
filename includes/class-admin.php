@@ -231,8 +231,38 @@ readonly class CachemanAdmin
         // Sanitize checkbox to boolean.
         $sanitized['debug_mode'] = isset($input['debug_mode']) ? true : false;
 
-        // Sanitize extra domains.
-        $sanitized['extra_domains'] = isset($input['extra_domains']) ? sanitize_text_field($input['extra_domains']) : '';
+        // Sanitize extra domains - validate each as a hostname.
+        $extra_domains = isset($input['extra_domains']) ? sanitize_text_field($input['extra_domains']) : '';
+        if (!empty($extra_domains)) {
+            $domains = array_map('trim', explode(',', $extra_domains));
+            $valid_domains = array_filter($domains, function (string $domain): bool {
+                return !empty($domain)
+                    && filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
+            });
+            $sanitized['extra_domains'] = implode(',', $valid_domains);
+
+            // Warn user if domains were filtered out.
+            $invalid_count = count($domains) - count($valid_domains);
+            if ($invalid_count > 0) {
+                add_settings_error(
+                    'zw_cacheman_settings',
+                    'invalid_domains',
+                    sprintf(
+                        /* translators: %d: number of invalid domains removed */
+                        _n(
+                            '%d invalid domain was removed from Extra Domains.',
+                            '%d invalid domains were removed from Extra Domains.',
+                            $invalid_count,
+                            'zw-cacheman'
+                        ),
+                        $invalid_count
+                    ),
+                    'warning'
+                );
+            }
+        } else {
+            $sanitized['extra_domains'] = '';
+        }
 
         // If debug mode setting changed, update the logger.
         if ($sanitized['debug_mode'] !== $old_settings['debug_mode']) {

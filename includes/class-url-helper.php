@@ -71,6 +71,41 @@ readonly class CachemanUrlHelper
     }
 
     /**
+     * Replace the host in a URL while preserving all other components
+     *
+     * @param string $url       The original URL (full URL or prefix format).
+     * @param string $new_host  The new hostname to use.
+     * @param bool   $is_prefix Whether this is a prefix (host/path) vs full URL.
+     * @return string|null The modified URL or null if invalid.
+     */
+    public function replace_host(string $url, string $new_host, bool $is_prefix = false): ?string
+    {
+        // For prefixes, temporarily add scheme to parse.
+        $url_to_parse = $is_prefix ? 'https://' . $url : $url;
+
+        $parsed = parse_url($url_to_parse);
+        if (empty($parsed['host'])) {
+            return null;
+        }
+
+        // Build the new URL from components (same pattern as clean_url).
+        $new_url = ($parsed['scheme'] ?? 'https') . '://' . $new_host;
+
+        if (!empty($parsed['port'])) {
+            $new_url .= ':' . $parsed['port'];
+        }
+
+        $new_url .= $parsed['path'] ?? '/';
+
+        // For prefixes, return without scheme and without trailing slash.
+        if ($is_prefix) {
+            return $new_host . rtrim($parsed['path'] ?? '', '/');
+        }
+
+        return $new_url;
+    }
+
+    /**
      * Format URL as prefix for Cloudflare API (no protocol)
      *
      * @param string $url Full URL to format as prefix.

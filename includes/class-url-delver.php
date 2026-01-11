@@ -439,31 +439,17 @@ readonly class CachemanUrlDelver
     /**
      * Replace the domain in a URL for a given type
      *
-     * @param string    $url   The original URL.
-     * @param PurgeType $type  The purge type.
+     * @param string    $url        The original URL.
+     * @param PurgeType $type       The purge type.
      * @param string    $new_domain The new domain to replace with.
      * @return string|null The modified URL or null if invalid.
      */
     private function replace_domain_in_url(string $url, PurgeType $type, string $new_domain): ?string
     {
-        if ($type === PurgeType::File) {
-            // For full URLs, parse and replace host.
-            $parsed = parse_url($url);
-            if (empty($parsed['host'])) {
-                return null;
-            }
-            $original_host = $parsed['host'];
-            $new_url = str_replace($original_host, $new_domain, $url);
-            return $new_url;
-        } elseif ($type === PurgeType::Prefix) {
-            // For prefixes, replace at the beginning.
-            $parsed = parse_url('https://' . $url); // Temporarily add protocol to parse.
-            if (empty($parsed['host'])) {
-                return null;
-            }
-            $original_host = $parsed['host'];
-            $new_prefix = str_replace($original_host, $new_domain, $url);
-            return $new_prefix;
-        }
+        return $this->url_helper->replace_host(
+            $url,
+            $new_domain,
+            $type === PurgeType::Prefix
+        );
     }
 }
