@@ -373,7 +373,8 @@ readonly class CachemanAdmin {
 										<form method="post" action="" style="display: inline;">
 											<?php wp_nonce_field( 'zw_cacheman_force_cron', 'zw_cacheman_cron_nonce' ); ?>
 											<input type="hidden" name="zw_cacheman_action" value="force_cron">
-											<input type="submit" class="button button-primary" value="<?php echo esc_attr__( 'Process Queue Now', 'zw-cacheman' ); ?>">
+											<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
+							<input type="submit" class="button button-primary" value="<?php echo esc_attr__( 'Process Queue Now', 'zw-cacheman' ); ?>">
 										</form>
 									</p>
 									
@@ -400,10 +401,12 @@ readonly class CachemanAdmin {
 										<form method="post" action="" style="display: inline;">
 											<?php wp_nonce_field( 'zw_cacheman_clear_queue', 'zw_cacheman_queue_nonce' ); ?>
 											<input type="hidden" name="zw_cacheman_action" value="clear_queue">
-											<a href="#" class="zw-cacheman-danger-link" onclick="if(confirm('<?php echo esc_js( __( 'Are you sure you want to clear the queue?', 'zw-cacheman' ) ); ?>')) { this.closest('form').submit(); } return false;"><?php echo esc_html__( 'Clear queue', 'zw-cacheman' ); ?></a>
+				<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
+							<a href="#" class="zw-cacheman-danger-link" onclick="if(confirm('<?php echo esc_js( __( 'Are you sure you want to clear the queue?', 'zw-cacheman' ) ); ?>')) { this.closest('form').submit(); } return false;"><?php echo esc_html__( 'Clear queue', 'zw-cacheman' ); ?></a>
 										</form>
 									</div>
 								<?php else : ?>
+									<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 									<p><?php echo esc_html__( 'The queue is empty. URLs will be added automatically when content changes.', 'zw-cacheman' ); ?></p>
 								<?php endif; ?>
 							</div>
@@ -415,6 +418,7 @@ readonly class CachemanAdmin {
 							<div class="inside">
 								<p>
 									<strong><?php echo esc_html__( 'Log Directory:', 'zw-cacheman' ); ?></strong><br>
+									<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 									<code style="background: #f0f0f0; padding: 4px 8px; display: inline-block; margin-top: 5px;"><?php echo esc_html( dirname( $this->logger->get_current_log_path() ) ); ?></code>
 								</p>
 								
@@ -441,6 +445,7 @@ readonly class CachemanAdmin {
 													</summary>
 													<div class="zw-cacheman-details-content">
 														<?php
+														// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local file read for log display.
 														$log_content = @file_get_contents( $log_file );
 														if ( $log_content ) {
 															$lines         = explode( "\n", trim( $log_content ) );
@@ -475,6 +480,7 @@ readonly class CachemanAdmin {
 									<form method="post" action="" style="display: inline;">
 										<?php wp_nonce_field( 'zw_cacheman_clear_logs', 'zw_cacheman_clear_logs_nonce' ); ?>
 										<input type="hidden" name="zw_cacheman_action" value="clear_logs">
+										<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 										<a href="#" class="zw-cacheman-danger-link" onclick="if(confirm('<?php echo esc_js( __( 'Delete all log files? This cannot be undone.', 'zw-cacheman' ) ); ?>')) { this.closest('form').submit(); } return false;"><?php echo esc_html__( 'Clear all logs', 'zw-cacheman' ); ?></a>
 									</form>
 								</div>
@@ -492,6 +498,7 @@ readonly class CachemanAdmin {
 									<p class="zw-cacheman-status-item">
 										<strong><?php echo esc_html__( 'Connection Status', 'zw-cacheman' ); ?></strong><br>
 										<?php if ( $is_connected ) : ?>
+											<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 											<span class="dashicons dashicons-yes-alt"></span> <?php echo esc_html__( 'Connected to Cloudflare', 'zw-cacheman' ); ?>
 										<?php elseif ( $has_credentials ) : ?>
 											<span class="dashicons dashicons-warning"></span> <?php echo esc_html__( 'Connection failed', 'zw-cacheman' ); ?>
@@ -502,6 +509,7 @@ readonly class CachemanAdmin {
 									
 									<p class="zw-cacheman-status-item">
 										<strong><?php echo esc_html__( 'Queue Status', 'zw-cacheman' ); ?></strong><br>
+										<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 										<span class="dashicons dashicons-list-view <?php echo $queue_count > 0 ? 'zw-cacheman-has-items' : 'zw-cacheman-empty'; ?>"></span>
 										<?php
 										if ( $queue_count > 0 ) {
@@ -537,6 +545,7 @@ readonly class CachemanAdmin {
 											}
 											?>
 										<?php else : ?>
+											<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 											<span class="dashicons dashicons-warning zw-cacheman-error"></span> <?php echo esc_html__( 'Not scheduled', 'zw-cacheman' ); ?>
 										<?php endif; ?>
 									</p>
@@ -557,6 +566,7 @@ readonly class CachemanAdmin {
 									<form method="post" action="">
 										<?php wp_nonce_field( 'zw_cacheman_test_connection', 'zw_cacheman_test_nonce' ); ?>
 										<input type="hidden" name="zw_cacheman_action" value="test_connection">
+										<?php // phpcs:ignore Generic.Files.LineLength.TooLong ?>
 										<input type="submit" class="button button-secondary" value="<?php echo esc_attr__( 'Test Connection', 'zw-cacheman' ); ?>" style="width: 100%;">
 									</form>
 								</p>
@@ -601,7 +611,7 @@ readonly class CachemanAdmin {
 
 					$redirect_args = [
 						'zw_message' => $result['success'] ? 'connection_success' : 'connection_error',
-						'zw_details' => urlencode( $result['message'] ),
+						'zw_details' => rawurlencode( $result['message'] ),
 					];
 				}
 				break;
@@ -656,14 +666,15 @@ readonly class CachemanAdmin {
 	 * Display admin notices
 	 */
 	public function admin_notices(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display-only, no state changes.
 		if ( ! isset( $_GET['page'] ) || 'zw_cacheman_settings' !== $_GET['page'] ) {
 			return;
 		}
 
-		// Check for status message.
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Display-only, no state changes.
 		if ( isset( $_GET['zw_message'] ) ) {
 			$message = sanitize_text_field( wp_unslash( $_GET['zw_message'] ) );
-			$details = isset( $_GET['zw_details'] ) ? urldecode( sanitize_text_field( wp_unslash( $_GET['zw_details'] ) ) ) : '';
+			$details = isset( $_GET['zw_details'] ) ? rawurldecode( sanitize_text_field( wp_unslash( $_GET['zw_details'] ) ) ) : '';
 
 			$notices = [
 				'queue_cleared'       => [ 'success', __( 'Cache queue has been cleared.', 'zw-cacheman' ) ],
@@ -686,6 +697,7 @@ readonly class CachemanAdmin {
 				);
 			}
 		}
+		// phpcs:enable
 
 		// Check if cron is scheduled.
 		if ( ! wp_next_scheduled( ZW_CACHEMAN_CRON_HOOK ) ) {
