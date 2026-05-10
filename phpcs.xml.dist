@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<ruleset name="zw-cacheman">
+    <description>WordPress Coding Standards for ZuidWest Cache Manager.</description>
+
+    <!-- Files to scan -->
+    <file>zw-cacheman.php</file>
+    <file>includes</file>
+
+    <!-- Tooling -->
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <ini name="error_reporting" value="E_ALL &amp; ~E_DEPRECATED"/>
+
+    <!-- Versions -->
+    <config name="testVersion" value="8.3-8.4"/>
+    <config name="minimum_wp_version" value="6.8"/>
+
+    <!-- Per-plugin -->
+    <config name="text_domain" value="zw-cacheman"/>
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="zw_cacheman"/>
+                <element value="ZW_CACHEMAN"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Standards -->
+    <rule ref="WordPress-Extra">
+        <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+    </rule>
+    <rule ref="WordPress-Docs">
+        <exclude name="Squiz.Commenting.FunctionComment.IncorrectTypeHint"/>
+    </rule>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="160"/>
+            <property name="absoluteLineLimit" value="0"/>
+        </properties>
+    </rule>
+
+    <exclude-pattern>vendor/*</exclude-pattern>
+    <exclude-pattern>node_modules/*</exclude-pattern>
+</ruleset>
