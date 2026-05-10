@@ -5,4 +5,4 @@ parameters:
     - zw-cacheman.php
     - includes
   bootstrapFiles:
-    - phpstan-bootstrap.php
+    - tests/phpstan-bootstrap.php
