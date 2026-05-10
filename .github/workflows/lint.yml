@@ -1,59 +1,33 @@
+---
 name: Lint
-permissions:
-  contents: read
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - '**/*.php'
       - 'composer.json'
       - 'composer.lock'
+      - 'phpcs.xml'
+      - 'phpcs.xml.dist'
+      - 'phpstan.neon'
+      - 'phpstan-bootstrap.php'
+      - 'languages/**'
   pull_request:
     paths:
       - '**/*.php'
       - 'composer.json'
       - 'composer.lock'
+      - 'phpcs.xml'
+      - 'phpcs.xml.dist'
+      - 'phpstan.neon'
+      - 'phpstan-bootstrap.php'
+      - 'languages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   lint:
-    name: QA
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        php: ["8.3", "8.4"]
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ matrix.php }}
-          extensions: curl
-          coverage: none
-          tools: composer:v2, cs2pr
-
-      - name: Validate PHP syntax
-        run: find . -maxdepth 1 -name '*.php' -exec php --syntax-check {} +
-
-      - name: Validate composer.json
-        run: composer validate --no-check-publish
-
-      - run: composer install --no-progress --prefer-dist --optimize-autoloader --no-suggest
-
-      - run: vendor/bin/phpcs -q --report=checkstyle | cs2pr
-
-      - run: ./vendor/bin/phpstan analyse --error-format=checkstyle | cs2pr
-
-      - name: Run wp-plugin-check
-        if: matrix.php == '8.4'
-        uses: wordpress/plugin-check-action@v1
-        with:
-          exclude-checks: |
-            late_escaping
-            plugin_review_phpcs
-            file_type
-            plugin_readme
-          exclude-files: phpstan-bootstrap.php
+    uses: oszuidwest/.github-templates/.github/workflows/wp-ci.yml@bd7984b073a684089c53524f7c5f52869d91fe0a
