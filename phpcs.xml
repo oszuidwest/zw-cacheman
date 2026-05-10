@@ -3,7 +3,7 @@
     <description>WordPress Coding Standards for ZuidWest Cache Manager plugin</description>
 
     <!-- What to scan -->
-    <file>zuidwest-cache-manager.php</file>
+    <file>zw-cacheman.php</file>
     <file>includes</file>
 
     <!-- Exclude vendor directory -->

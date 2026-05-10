@@ -2,7 +2,7 @@ parameters:
   level: 6
   phpVersion: 80300 # Minimum PHP version we support
   paths:
-    - zuidwest-cache-manager.php
+    - zw-cacheman.php
     - includes
   bootstrapFiles:
-    - phpstan-bootstrap.php
+    - phpstan-bootstrap.stub
