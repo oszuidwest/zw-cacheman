@@ -62,12 +62,17 @@ readonly class CachemanUrlHelper {
 			$clean_url .= '/';
 		}
 
-		// Add trailing slash if requested.
-		if ( $add_trailing_slash ) {
+		// Skip trailing slash for static-file URLs (.xml sitemaps, .rss feeds).
+		// Pretty permalinks never end in an extension.
+		if ( $add_trailing_slash && ! $this->has_file_extension( $clean_url ) ) {
 			$clean_url = trailingslashit( $clean_url );
 		}
 
 		return $clean_url;
+	}
+
+	private function has_file_extension( string $url ): bool {
+		return (bool) preg_match( '/\.[a-zA-Z0-9]{2,5}$/', $url );
 	}
 
 	/**
