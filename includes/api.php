@@ -17,12 +17,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 readonly class CachemanAPI {
 
 	/**
-	 * Conservative Cloudflare batch size for single-file purge requests.
+	 * Cloudflare's per-request limit for single-file purge requests
+	 * (verified: the API rejects 101 files with error 1094 on a Business zone).
 	 */
 	private const FILE_BATCH_SIZE = 100;
 
 	/**
-	 * Cloudflare's documented per-request limit for prefix purge requests.
+	 * Conservative batch size for prefix purge requests. The API caps prefix
+	 * purges at 100 per request (error 1117); 30 stays well under the limit
+	 * across plan types.
 	 */
 	private const PREFIX_BATCH_SIZE = 30;
 

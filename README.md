@@ -11,6 +11,7 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 - **WP-Cron Integration**: Reliable scheduled processing
 - **URL Prefix Purging**: Uses Cloudflare's prefix purging for archives, automatically clearing paginated pages (v1.1+)
 - **Taxonomy Term Handling**: Purges cache when taxonomy terms are created, edited, or deleted (v1.3+)
+- **SEO Sitemap Purging**: Purges Yoast SEO sitemaps — including the News and Video add-ons — when content changes, with filters to plug in other SEO plugins (v1.8+)
 
 ## How It Works
 
@@ -18,7 +19,7 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 When content changes, immediately purges post permalink, homepage, post type archive, and related API endpoints. This happens when posts are published, edited, or deleted.
 
 ### Queued Purging (Low Priority)
-Collects and batch-processes site feed, taxonomy archives, author archives, API endpoints, and URL prefixes.
+Collects and batch-processes site feed, taxonomy archives, author archives, API endpoints, XML sitemaps, and URL prefixes.
 
 ### Taxonomy Term Handling
 When taxonomy terms (categories, tags, custom taxonomies) are created, updated, or deleted, automatically purges their archive pages, parent terms, and related endpoints.
@@ -89,6 +90,13 @@ Simultaneously, the plugin queues these related URLs for batch processing:
    - `https://sportsgazette.com/wp-json/wp/v2/users/42/` (Author endpoint)
    - All taxonomy collection endpoints
 
+6. **XML sitemaps** (when Yoast SEO is active):
+   - `https://sportsgazette.com/sitemap_index.xml` (as exact URL)
+   - `https://sportsgazette.com/post-sitemap.xml` (as exact URL)
+   - `sportsgazette.com/post-sitemap` (as URL prefix, to catch paginated variants like `post-sitemap2.xml`)
+   - `sportsgazette.com/author-sitemap` (as prefix, for post types with author support)
+   - News and Video sitemaps when the Yoast News/Video add-ons are active
+
 ### Post Deletion Handling
 
 When a post is deleted or moved to trash, the plugin handles cache purging intelligently:
@@ -133,6 +141,10 @@ When a taxonomy term is created, edited, or deleted, the plugin performs similar
 4. **Site-wide feeds**:
    - `https://sportsgazette.com/feed/` (as exact URL)
 
+5. **XML sitemaps** (when Yoast SEO is active):
+   - `https://sportsgazette.com/sitemap_index.xml` (as exact URL)
+   - `sportsgazette.com/category-sitemap` (as URL prefix)
+
 ### How the Queue Processing Works
 
 1. The plugin adds all URLs to a queue, removing any duplicates
@@ -169,6 +181,32 @@ Configure the plugin under Settings → ZuidWest Cache:
 - **Extra Domains**: Comma-separated list of additional domains to purge (e.g., app.example.com,www.example.com). URLs will be duplicated for these domains.
 - **Debug Mode**: Enable logging
 
+## Developer Filters
+
+### `zw_cacheman_sitemap_provider`
+Replace or disable the sitemap provider. The plugin auto-detects Yoast SEO; return your own `CachemanSitemapProvider` implementation to support another SEO plugin, or `null` to disable sitemap purging entirely.
+
+```php
+add_filter( 'zw_cacheman_sitemap_provider', function ( $provider, $logger ) {
+    return new My_RankMath_Sitemap_Provider( $logger ); // or null to disable
+}, 10, 2 );
+```
+
+### `zw_cacheman_sitemap_items`
+Add, remove, or modify the computed sitemap purge items before they are queued. Receives the items plus a context array (`event` and `post_type` or `taxonomy`). Each item is an array with a `url` (absolute) and a `type` (`ZW_CACHEMAN_Core\PurgeType` case, or the string `'file'`/`'prefix'`). Invalid items are logged and dropped.
+
+```php
+add_filter( 'zw_cacheman_sitemap_items', function ( array $items, array $context ) {
+    if ( 'post_change' === $context['event'] && 'event' === $context['post_type'] ) {
+        $items[] = [
+            'url'  => home_url( '/events-sitemap.xml' ),
+            'type' => ZW_CACHEMAN_Core\PurgeType::File,
+        ];
+    }
+    return $items;
+}, 10, 2 );
+```
+
 ## Known Limitations
 
 ### REST API URLs with Query Strings
@@ -190,9 +228,10 @@ The plugin purges individual taxonomy feeds (e.g., `/regio/roosendaal/feed/`) bu
 
 ## Requirements
 
-- WordPress 6.7+
+- WordPress 6.8+
 - PHP 8.3+
 - Active Cloudflare account with API access
+- A Cloudflare plan that supports URL prefix purging (verified on Business; file purging works on all plans)
 - Properly configured WP-Cron
 
 ## Support & License
