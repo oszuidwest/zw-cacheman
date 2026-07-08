@@ -17,6 +17,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 readonly class CachemanUrlHelper {
 
 	/**
+	 * Regex matching URLs that end in a known file extension.
+	 */
+	private const FILE_EXTENSION_PATTERN =
+		'/\.(?:atom|avif|css|eot|gif|html?|ico|jpe?g|js|json|map|mp3|mp4|ogg|pdf|png|rdf|rss|svg|ttf|txt|webm|webp|woff2?|xml|zip)$/i';
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanLogger $logger The logger instance.
@@ -77,9 +83,7 @@ readonly class CachemanUrlHelper {
 	 * @return bool
 	 */
 	private function has_file_extension( string $url ): bool {
-		$extensions = 'atom|avif|css|eot|gif|html?|ico|jpe?g|js|json|map|mp3|mp4|ogg|pdf|png|rdf|rss|svg|ttf|txt|webm|webp|woff2?|xml|zip';
-
-		return (bool) preg_match( '/\.(?:' . $extensions . ')$/i', $url );
+		return (bool) preg_match( self::FILE_EXTENSION_PATTERN, $url );
 	}
 
 	/**

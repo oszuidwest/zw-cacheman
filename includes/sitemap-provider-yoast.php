@@ -47,7 +47,7 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	 */
 	public function get_purge_items_for_post_type( string $post_type ): array {
 		$items = [
-			$this->file_item( '/sitemap_index.xml' ),
+			$this->file_item( 'sitemap_index.xml' ),
 		];
 		$items = array_merge( $items, $this->paginated_sitemap_items( "{$post_type}-sitemap" ) );
 
@@ -56,12 +56,12 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 		}
 
 		if ( $this->is_news_active() && $this->is_included_in_news_sitemap( $post_type ) ) {
-			$items[] = $this->file_item( $this->sitemap_file_path( $this->addon_sitemap_slug( $this->get_news_sitemap_basename() ) ) );
+			$items[] = $this->file_item( $this->news_sitemap_slug() . '.xml' );
 		}
 
 		// Any post save may add or remove embedded video.
 		if ( $this->is_video_active() ) {
-			$items = array_merge( $items, $this->paginated_sitemap_items( $this->addon_sitemap_slug( $this->get_video_sitemap_basename() ) ) );
+			$items = array_merge( $items, $this->paginated_sitemap_items( $this->video_sitemap_slug() ) );
 		}
 
 		$this->logger->debug( 'YoastSitemap', 'Post-type ' . $post_type . ' → ' . count( $items ) . ' sitemap purge items' );
@@ -77,7 +77,7 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	 */
 	public function get_purge_items_for_taxonomy( string $taxonomy ): array {
 		$items = [
-			$this->file_item( '/sitemap_index.xml' ),
+			$this->file_item( 'sitemap_index.xml' ),
 		];
 		$items = array_merge( $items, $this->paginated_sitemap_items( "{$taxonomy}-sitemap" ) );
 
@@ -87,14 +87,14 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	}
 
 	/**
-	 * Build a File purge item for a site-relative path.
+	 * Build a File purge item for a sitemap file.
 	 *
-	 * @param string $path Path with leading slash (e.g. "/sitemap_index.xml").
+	 * @param string $file Sitemap file name (e.g. "sitemap_index.xml").
 	 * @return array{url: string, type: PurgeType}
 	 */
-	private function file_item( string $path ): array {
+	private function file_item( string $file ): array {
 		return [
-			'url'  => home_url( $path ),
+			'url'  => $this->sitemap_url( $file ),
 			'type' => PurgeType::File,
 		];
 	}
@@ -110,62 +110,33 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	 */
 	private function paginated_sitemap_items( string $basename ): array {
 		return [
-			$this->file_item( $this->sitemap_file_path( $basename ) ),
-			$this->prefix_item( $this->sitemap_prefix_path( $basename ) ),
+			$this->file_item( $basename . '.xml' ),
+			[
+				'url'  => $this->sitemap_url( $basename ),
+				'type' => PurgeType::Prefix,
+			],
 		];
 	}
 
 	/**
-	 * Build a Prefix purge item covering paginated sitemap variants.
+	 * Build the absolute URL for a sitemap path.
 	 *
-	 * @param string $path Path with leading slash, without extension.
-	 * @return array{url: string, type: PurgeType}
-	 */
-	private function prefix_item( string $path ): array {
-		return [
-			'url'  => home_url( $path ),
-			'type' => PurgeType::Prefix,
-		];
-	}
-
-	/**
-	 * Build the sitemap file path for a basename.
+	 * Uses Yoast's own router when available, so sites filtering
+	 * `wpseo_sitemaps_base_url` purge the URLs Yoast actually serves.
 	 *
-	 * @param string $basename Sitemap basename, with or without ".xml".
+	 * @param string $path Sitemap path relative to the site root (e.g. "post-sitemap.xml").
 	 * @return string
 	 */
-	private function sitemap_file_path( string $basename ): string {
-		return $this->sitemap_prefix_path( $basename ) . '.xml';
-	}
-
-	/**
-	 * Build the sitemap prefix path for a basename.
-	 *
-	 * @param string $basename Sitemap basename, with or without ".xml".
-	 * @return string
-	 */
-	private function sitemap_prefix_path( string $basename ): string {
-		$basename = ltrim( $basename, '/' );
-		$basename = preg_replace( '/\.xml$/i', '', $basename ) ?? $basename;
-
-		return '/' . $basename;
-	}
-
-	/**
-	 * Turn a Yoast add-on basename into its sitemap slug.
-	 *
-	 * @param string $basename Add-on basename.
-	 * @return string
-	 */
-	private function addon_sitemap_slug( string $basename ): string {
-		$basename = ltrim( $basename, '/' );
-		$basename = preg_replace( '/\.xml$/i', '', $basename ) ?? $basename;
-
-		if ( ! str_ends_with( $basename, '-sitemap' ) ) {
-			$basename .= '-sitemap';
+	private function sitemap_url( string $path ): string {
+		$router = [ 'WPSEO_Sitemaps_Router', 'get_base_url' ];
+		if ( is_callable( $router ) ) {
+			$url = $router( $path );
+			if ( is_string( $url ) && '' !== $url ) {
+				return $url;
+			}
 		}
 
-		return $basename;
+		return home_url( '/' . $path );
 	}
 
 	/**
@@ -193,104 +164,62 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	 * @return bool
 	 */
 	private function is_included_in_news_sitemap( string $post_type ): bool {
-		if ( ! $this->has_static_method( 'WPSEO_News', 'get_included_post_types' ) ) {
+		$callback = [ 'WPSEO_News', 'get_included_post_types' ];
+		if ( ! is_callable( $callback ) ) {
 			return false;
 		}
 
-		$included = call_user_func( [ 'WPSEO_News', 'get_included_post_types' ] );
-		if ( ! is_array( $included ) ) {
-			return false;
-		}
+		$included = $callback();
 
-		return in_array( $post_type, $included, true );
+		return is_array( $included ) && in_array( $post_type, $included, true );
 	}
 
 	/**
-	 * Get Yoast News sitemap basename.
+	 * News sitemap slug (e.g. "news-sitemap").
 	 *
 	 * @return string
 	 */
-	private function get_news_sitemap_basename(): string {
-		return $this->get_addon_sitemap_basename( '\WPSEO_News_Sitemap', 'get_sitemap_name', $this->get_default_news_sitemap_basename(), [ false ] );
+	private function news_sitemap_slug(): string {
+		return $this->addon_sitemap_slug( $this->addon_sitemap_basename( 'WPSEO_News_Sitemap', 'get_sitemap_name', 'news', [ false ] ) );
 	}
 
 	/**
-	 * Get Yoast Video sitemap basename.
+	 * Video sitemap slug (e.g. "video-sitemap").
 	 *
 	 * @return string
 	 */
-	private function get_video_sitemap_basename(): string {
-		return $this->get_addon_sitemap_basename( '\WPSEO_Video_Sitemap', 'get_video_sitemap_basename', $this->get_default_video_sitemap_basename() );
+	private function video_sitemap_slug(): string {
+		return $this->addon_sitemap_slug( $this->addon_sitemap_basename( 'WPSEO_Video_Sitemap', 'get_video_sitemap_basename', 'video' ) );
 	}
 
 	/**
-	 * Get the News sitemap basename without calling the add-on class.
+	 * Turn a Yoast add-on basename into its sitemap slug.
 	 *
+	 * @param string $basename Add-on basename (e.g. "news" or "yoast-news").
 	 * @return string
 	 */
-	private function get_default_news_sitemap_basename(): string {
-		$basename = post_type_exists( 'news' ) ? 'yoast-news' : 'news';
-
-		return $this->get_constant_basename( 'YOAST_NEWS_SITEMAP_BASENAME', $basename );
-	}
-
-	/**
-	 * Get the Video sitemap basename without calling the add-on class.
-	 *
-	 * @return string
-	 */
-	private function get_default_video_sitemap_basename(): string {
-		$basename = post_type_exists( 'video' ) ? 'yoast-video' : 'video';
-
-		return $this->get_constant_basename( 'YOAST_VIDEO_SITEMAP_BASENAME', $basename );
-	}
-
-	/**
-	 * Get a string constant value when it is defined.
-	 *
-	 * @param string $constant Constant name.
-	 * @param string $fallback Fallback basename.
-	 * @return string
-	 */
-	private function get_constant_basename( string $constant, string $fallback ): string {
-		if ( defined( $constant ) ) {
-			$basename = constant( $constant );
-			if ( is_string( $basename ) && '' !== $basename ) {
-				return $basename;
-			}
-		}
-
-		return $fallback;
+	private function addon_sitemap_slug( string $basename ): string {
+		return str_ends_with( $basename, '-sitemap' ) ? $basename : $basename . '-sitemap';
 	}
 
 	/**
 	 * Resolve an add-on sitemap basename through Yoast when possible.
 	 *
 	 * @param string           $class_name Yoast add-on sitemap class.
-	 * @param string           $method   Static method returning the sitemap basename.
-	 * @param string           $fallback Fallback basename.
-	 * @param array<int,mixed> $args     Arguments for the Yoast method.
+	 * @param string           $method     Static method returning the sitemap basename.
+	 * @param string           $fallback   Fallback basename.
+	 * @param array<int,mixed> $args       Arguments for the Yoast method.
 	 * @return string
 	 */
-	private function get_addon_sitemap_basename( string $class_name, string $method, string $fallback, array $args = [] ): string {
-		if ( $this->has_static_method( $class_name, $method ) ) {
-			$basename = call_user_func( [ $class_name, $method ], ...$args );
+	private function addon_sitemap_basename( string $class_name, string $method, string $fallback, array $args = [] ): string {
+		$callback = [ $class_name, $method ];
+		if ( is_callable( $callback ) ) {
+			$basename = $callback( ...$args );
 			if ( is_string( $basename ) && '' !== $basename ) {
 				return $basename;
 			}
 		}
 
 		return $fallback;
-	}
-
-	/**
-	 * Whether an optional external class exposes a static method.
-	 *
-	 * @param string $class_name Class name.
-	 * @param string $method     Method name.
-	 * @return bool
-	 */
-	private function has_static_method( string $class_name, string $method ): bool {
-		return is_callable( [ $class_name, $method ] );
 	}
 }
