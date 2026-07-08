@@ -30,6 +30,9 @@ require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
 require_once ZW_CACHEMAN_DIR . 'includes/logger.php';
 require_once ZW_CACHEMAN_DIR . 'includes/url-helper.php';
 require_once ZW_CACHEMAN_DIR . 'includes/api.php';
+require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider.php';
+require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-yoast.php';
+require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-factory.php';
 require_once ZW_CACHEMAN_DIR . 'includes/url-delver.php';
 require_once ZW_CACHEMAN_DIR . 'includes/cache-manager.php';
 require_once ZW_CACHEMAN_DIR . 'includes/admin.php';
@@ -47,7 +50,14 @@ function zw_cacheman_init() {
 	$logger     = new ZW_CACHEMAN_Core\CachemanLogger( ! empty( $settings['debug_mode'] ) );
 	$url_helper = new ZW_CACHEMAN_Core\CachemanUrlHelper( $logger );
 	$api        = new ZW_CACHEMAN_Core\CachemanAPI( $url_helper, $logger );
-	$url_delver = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger );
+
+	$sitemap_provider = ZW_CACHEMAN_Core\CachemanSitemapProviderFactory::detect( $logger );
+	$sitemap_provider = apply_filters( 'zw_cacheman_sitemap_provider', $sitemap_provider, $logger );
+	if ( null !== $sitemap_provider && ! $sitemap_provider instanceof ZW_CACHEMAN_Core\CachemanSitemapProvider ) {
+		$sitemap_provider = null;
+	}
+
+	$url_delver = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger, $sitemap_provider );
 	$manager    = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger );
 
 	// Only load admin interface in admin area.
