@@ -29,7 +29,8 @@ readonly class CachemanAPI {
 	}
 
 	/**
-	 * Purge URLs via Cloudflare API
+	 * Purge URLs via Cloudflare API. Batches into groups of 30 (Cloudflare's
+	 * per-call maximum on Business plans); returns false if any batch failed.
 	 *
 	 * @param array<string> $urls URLs to purge.
 	 * @return bool Success or failure.
@@ -47,6 +48,39 @@ readonly class CachemanAPI {
 			return true;
 		}
 
+		// Cloudflare's purge_cache API accepts at most 30 files per request.
+		$batch_size = 30;
+		$batches    = array_chunk( $clean_urls, $batch_size );
+
+		if ( count( $batches ) > 1 ) {
+			$this->logger->debug( 'API', 'Splitting ' . count( $clean_urls ) . ' URLs into ' . count( $batches ) . ' batches of ' . $batch_size );
+		}
+
+		$failed_batches = 0;
+		foreach ( $batches as $index => $batch ) {
+			if ( ! $this->send_files_purge_request( $batch ) ) {
+				++$failed_batches;
+				$this->logger->error( 'API', 'Failed to purge file batch #' . ( $index + 1 ) . ' of ' . count( $batches ) );
+			}
+		}
+
+		if ( 0 === $failed_batches ) {
+			return true;
+		}
+
+		$this->logger->error(
+			'API',
+			'Failed to purge ' . $failed_batches . ' out of ' . count( $batches ) . ' file batches (' .
+			count( $clean_urls ) . ' total URLs)'
+		);
+		return false;
+	}
+
+	/**
+	 * @param array<string> $files Cleaned URLs, max 30 entries.
+	 * @return bool
+	 */
+	private function send_files_purge_request( array $files ): bool {
 		$settings = get_option( ZW_CACHEMAN_SETTINGS, array() );
 		$zone_id  = ! empty( $settings['zone_id'] ) ? $settings['zone_id'] : '';
 		$api_key  = ! empty( $settings['api_key'] ) ? $settings['api_key'] : '';
@@ -60,11 +94,11 @@ readonly class CachemanAPI {
 
 		$request_body = wp_json_encode(
 			array(
-				'files' => $clean_urls,
+				'files' => $files,
 			)
 		);
 
-		$this->logger->debug( 'API', 'Sending request to Cloudflare with ' . count( $clean_urls ) . ' URLs' );
+		$this->logger->debug( 'API', 'Sending request to Cloudflare with ' . count( $files ) . ' URLs' );
 		$this->logger->debug( 'API', 'Request body: ' . $request_body );
 
 		$response = wp_remote_post(
@@ -90,25 +124,25 @@ readonly class CachemanAPI {
 		$body_json     = json_decode( $body, true );
 
 		if ( 200 === $response_code && isset( $body_json['success'] ) && true === $body_json['success'] ) {
-			$this->logger->debug( 'API', 'Successfully purged ' . count( $clean_urls ) . ' URLs' );
+			$this->logger->debug( 'API', 'Successfully purged ' . count( $files ) . ' URLs' );
 			return true;
-		} else {
-			$error      = isset( $body_json['errors'][0]['message'] ) ? $body_json['errors'][0]['message'] : 'Unknown error';
-			$error_code = isset( $body_json['errors'][0]['code'] ) ? $body_json['errors'][0]['code'] : 'Unknown code';
-
-			// Log the error with both HTTP and API codes.
-			$this->logger->error( 'API', 'Failed to purge URLs. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error );
-			$this->logger->error( 'API', 'Response body: ' . $body );
-
-			// Log the failed URLs.
-			$this->logger->error(
-				'API',
-				'Failed to purge the following URLs: ' . implode( ', ', array_slice( $clean_urls, 0, 5 ) ) .
-				( count( $clean_urls ) > 5 ? ' and ' . ( count( $clean_urls ) - 5 ) . ' more.' : '' )
-			);
-
-			return false;
 		}
+
+		$error      = isset( $body_json['errors'][0]['message'] ) ? $body_json['errors'][0]['message'] : 'Unknown error';
+		$error_code = isset( $body_json['errors'][0]['code'] ) ? $body_json['errors'][0]['code'] : 'Unknown code';
+
+		// Log the error with both HTTP and API codes.
+		$this->logger->error( 'API', 'Failed to purge URLs. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error );
+		$this->logger->error( 'API', 'Response body: ' . $body );
+
+		// Log the failed URLs.
+		$this->logger->error(
+			'API',
+			'Failed to purge the following URLs: ' . implode( ', ', array_slice( $files, 0, 5 ) ) .
+			( count( $files ) > 5 ? ' and ' . ( count( $files ) - 5 ) . ' more.' : '' )
+		);
+
+		return false;
 	}
 
 	/**
