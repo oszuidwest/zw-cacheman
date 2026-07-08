@@ -23,15 +23,31 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProvider {
 
+	/**
+	 * Constructor.
+	 *
+	 * @param CachemanLogger $logger Logger.
+	 */
 	public function __construct(
 		private CachemanLogger $logger
 	) {
 	}
 
+	/**
+	 * Whether Yoast SEO is loaded.
+	 *
+	 * @return bool
+	 */
 	public function is_active(): bool {
 		return defined( 'WPSEO_VERSION' );
 	}
 
+	/**
+	 * Sitemap purge items for a post-type change.
+	 *
+	 * @param string $post_type Post type slug.
+	 * @return array<array{url: string, type: PurgeType}>
+	 */
 	public function get_purge_items_for_post_type( string $post_type ): array {
 		$items = [
 			$this->file_item( '/sitemap_index.xml' ),
@@ -52,6 +68,12 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 		return $items;
 	}
 
+	/**
+	 * Sitemap purge items for a taxonomy change.
+	 *
+	 * @param string $taxonomy Taxonomy slug.
+	 * @return array<array{url: string, type: PurgeType}>
+	 */
 	public function get_purge_items_for_taxonomy( string $taxonomy ): array {
 		$items = [
 			$this->file_item( '/sitemap_index.xml' ),
@@ -64,6 +86,8 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	}
 
 	/**
+	 * Build a File purge item for a site-relative path.
+	 *
 	 * @param string $path Path with leading slash (e.g. "/sitemap_index.xml").
 	 * @return array{url: string, type: PurgeType}
 	 */
@@ -75,6 +99,8 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 	}
 
 	/**
+	 * Build a Prefix purge item covering all paginated variants of a slug.
+	 *
 	 * Prefix `/foo-sitemap` (without `.xml`) matches `/foo-sitemap.xml`,
 	 * `/foo-sitemap2.xml`, ... in a single Cloudflare purge item.
 	 *
@@ -88,14 +114,30 @@ final readonly class CachemanYoastSitemapProvider implements CachemanSitemapProv
 		];
 	}
 
+	/**
+	 * Whether Yoast News is loaded.
+	 *
+	 * @return bool
+	 */
 	private function is_news_active(): bool {
 		return defined( 'WPSEO_NEWS_FILE' );
 	}
 
+	/**
+	 * Whether Yoast Video is loaded.
+	 *
+	 * @return bool
+	 */
 	private function is_video_active(): bool {
 		return defined( 'WPSEO_VIDEO_FILE' );
 	}
 
+	/**
+	 * Whether the post type is listed in Yoast News's sitemap config.
+	 *
+	 * @param string $post_type Post type slug.
+	 * @return bool
+	 */
 	private function is_included_in_news_sitemap( string $post_type ): bool {
 		if ( ! class_exists( '\WPSEO_News' ) ) {
 			return false;

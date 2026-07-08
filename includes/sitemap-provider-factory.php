@@ -25,6 +25,12 @@ final class CachemanSitemapProviderFactory {
 		CachemanYoastSitemapProvider::class,
 	];
 
+	/**
+	 * Return the first candidate whose SEO plugin is active, or null.
+	 *
+	 * @param CachemanLogger $logger Logger.
+	 * @return CachemanSitemapProvider|null
+	 */
 	public static function detect( CachemanLogger $logger ): ?CachemanSitemapProvider {
 		foreach ( self::CANDIDATES as $class ) {
 			$provider = new $class( $logger );

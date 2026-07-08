@@ -77,6 +77,8 @@ readonly class CachemanAPI {
 	}
 
 	/**
+	 * Send a single Cloudflare purge_cache request for a batch of files.
+	 *
 	 * @param array<string> $files Cleaned URLs, max 30 entries.
 	 * @return bool
 	 */

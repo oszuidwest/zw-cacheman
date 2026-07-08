@@ -71,6 +71,12 @@ readonly class CachemanUrlHelper {
 		return $clean_url;
 	}
 
+	/**
+	 * Whether a URL ends in a short file extension.
+	 *
+	 * @param string $url URL to inspect.
+	 * @return bool
+	 */
 	private function has_file_extension( string $url ): bool {
 		return (bool) preg_match( '/\.[a-zA-Z0-9]{2,5}$/', $url );
 	}
