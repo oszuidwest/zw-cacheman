@@ -62,8 +62,7 @@ readonly class CachemanUrlHelper {
 			$clean_url .= '/';
 		}
 
-		// Skip trailing slash for static-file URLs (.xml sitemaps, .rss feeds).
-		// Pretty permalinks never end in an extension.
+		// Skip trailing slash for known file URLs.
 		if ( $add_trailing_slash && ! $this->has_file_extension( $clean_url ) ) {
 			$clean_url = trailingslashit( $clean_url );
 		}
@@ -72,13 +71,15 @@ readonly class CachemanUrlHelper {
 	}
 
 	/**
-	 * Whether a URL ends in a short file extension.
+	 * Whether a URL ends in a known file extension.
 	 *
 	 * @param string $url URL to inspect.
 	 * @return bool
 	 */
 	private function has_file_extension( string $url ): bool {
-		return (bool) preg_match( '/\.[a-zA-Z0-9]{2,5}$/', $url );
+		$extensions = 'atom|avif|css|eot|gif|html?|ico|jpe?g|js|json|map|mp3|mp4|ogg|pdf|png|rdf|rss|svg|ttf|txt|webm|webp|woff2?|xml|zip';
+
+		return (bool) preg_match( '/\.(?:' . $extensions . ')$/i', $url );
 	}
 
 	/**

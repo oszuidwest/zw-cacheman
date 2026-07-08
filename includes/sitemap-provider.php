@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * list of purge items — a mix of exact-URL File purges and URL-prefix purges,
  * whichever fits each sitemap group best.
  *
- * URLs returned MUST be absolute (schema + host + path). The url-helper handles
+ * URLs returned MUST be absolute (scheme + host + path). The url-helper handles
  * the File-vs-Prefix formatting difference (File keeps the scheme; Prefix
  * strips it down to `host/path`).
  */

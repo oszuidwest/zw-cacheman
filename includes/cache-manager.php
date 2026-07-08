@@ -106,6 +106,7 @@ readonly class CachemanManager {
 
 				if ( ! $result ) {
 					$this->logger->error( 'Manager', 'Failed to process high priority purge items for post ID ' . $post->ID );
+					$this->queue_purge_items( $high_priority_items );
 				}
 			} else {
 				$this->logger->debug( 'Manager', 'No high priority purge items found for post ID ' . $post->ID );
@@ -146,6 +147,7 @@ readonly class CachemanManager {
 
 			if ( ! $result ) {
 				$this->logger->error( 'Manager', 'Failed to process purge items for deleted post ID ' . $post_id );
+				$this->queue_purge_items( $purge_items );
 			}
 		} else {
 			$this->logger->debug( 'Manager', 'No purge items found for deleted post ID ' . $post_id );
@@ -178,6 +180,7 @@ readonly class CachemanManager {
 
 			if ( ! $result ) {
 				$this->logger->error( 'Manager', 'Failed to process high priority purge items for term ID ' . $term_id );
+				$this->queue_purge_items( $high_priority_items );
 			}
 		} else {
 			$this->logger->debug( 'Manager', 'No high priority purge items found for term ID ' . $term_id );
@@ -213,6 +216,7 @@ readonly class CachemanManager {
 
 			if ( ! $result ) {
 				$this->logger->error( 'Manager', 'Failed to process purge items for deleted term ID ' . $term_id );
+				$this->queue_purge_items( $purge_items );
 			}
 		} else {
 			$this->logger->debug( 'Manager', 'No purge items found for deleted term ID ' . $term_id );

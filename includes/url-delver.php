@@ -227,7 +227,7 @@ readonly class CachemanUrlDelver {
 			'type' => PurgeType::File,
 		];
 
-		$urls = array_merge( $urls, $this->get_sitemap_urls_for_post_type( $post->post_type ) );
+		$urls = array_merge( $urls, $this->get_sitemap_items_for_post_type( $post->post_type ) );
 
 		// Create purge items.
 		$purge_items = $this->create_purge_items( $urls );
@@ -372,7 +372,7 @@ readonly class CachemanUrlDelver {
 			'type' => PurgeType::File,
 		];
 
-		$urls = array_merge( $urls, $this->get_sitemap_urls_for_taxonomy( $taxonomy ) );
+		$urls = array_merge( $urls, $this->get_sitemap_items_for_taxonomy( $taxonomy ) );
 
 		// Create purge items.
 		$purge_items = $this->create_purge_items( $urls );
@@ -439,7 +439,7 @@ readonly class CachemanUrlDelver {
 			'type' => PurgeType::File,
 		];
 
-		$urls = array_merge( $urls, $this->get_sitemap_urls_for_taxonomy( $taxonomy ) );
+		$urls = array_merge( $urls, $this->get_sitemap_items_for_taxonomy( $taxonomy ) );
 
 		// Create purge items.
 		$purge_items = $this->create_purge_items( $urls );
@@ -455,7 +455,7 @@ readonly class CachemanUrlDelver {
 	 * @param string $post_type Post type slug.
 	 * @return array<array{url: string, type: PurgeType}>
 	 */
-	private function get_sitemap_urls_for_post_type( string $post_type ): array {
+	private function get_sitemap_items_for_post_type( string $post_type ): array {
 		if ( ! $this->sitemap_provider || ! $this->sitemap_provider->is_active() ) {
 			return [];
 		}
@@ -465,12 +465,22 @@ readonly class CachemanUrlDelver {
 		/**
 		 * Filter the sitemap purge items for a post-type change.
 		 *
+		 * @since 1.8.0
+		 *
 		 * @param array<array{url: string, type: PurgeType}> $items   Purge items the provider computed.
 		 * @param array{event: string, post_type: string}    $context Contextual data.
 		 */
-		return (array) apply_filters(
+		$filtered_items = apply_filters(
 			'zw_cacheman_sitemap_items',
 			$items,
+			[
+				'event'     => 'post_change',
+				'post_type' => $post_type,
+			]
+		);
+
+		return $this->validate_sitemap_items(
+			$filtered_items,
 			[
 				'event'     => 'post_change',
 				'post_type' => $post_type,
@@ -484,15 +494,15 @@ readonly class CachemanUrlDelver {
 	 * @param string $taxonomy Taxonomy slug.
 	 * @return array<array{url: string, type: PurgeType}>
 	 */
-	private function get_sitemap_urls_for_taxonomy( string $taxonomy ): array {
+	private function get_sitemap_items_for_taxonomy( string $taxonomy ): array {
 		if ( ! $this->sitemap_provider || ! $this->sitemap_provider->is_active() ) {
 			return [];
 		}
 
 		$items = $this->sitemap_provider->get_purge_items_for_taxonomy( $taxonomy );
 
-		/** This filter is documented above. */
-		return (array) apply_filters(
+		/** This filter is documented in includes/url-delver.php. */
+		$filtered_items = apply_filters(
 			'zw_cacheman_sitemap_items',
 			$items,
 			[
@@ -500,6 +510,93 @@ readonly class CachemanUrlDelver {
 				'taxonomy' => $taxonomy,
 			]
 		);
+
+		return $this->validate_sitemap_items(
+			$filtered_items,
+			[
+				'event'    => 'term_change',
+				'taxonomy' => $taxonomy,
+			]
+		);
+	}
+
+	/**
+	 * Validate sitemap items from the public filter boundary.
+	 *
+	 * @param mixed                $items   Filter output.
+	 * @param array<string,string> $context Filter context.
+	 * @return array<array{url: string, type: PurgeType}>
+	 */
+	private function validate_sitemap_items( mixed $items, array $context ): array {
+		$context_log = $this->format_context( $context );
+
+		if ( ! is_array( $items ) ) {
+			$this->logger->error(
+				'URL Delver',
+				'Invalid zw_cacheman_sitemap_items result for ' . $context_log . ': expected array, got ' . get_debug_type( $items )
+			);
+			return [];
+		}
+
+		if ( $this->is_raw_purge_item( $items ) ) {
+			$items = [ $items ];
+		}
+
+		$valid_items = [];
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				$this->logger->error(
+					'URL Delver',
+					'Dropped invalid sitemap purge item for ' . $context_log . ': expected array, got ' . get_debug_type( $item )
+				);
+				continue;
+			}
+
+			$url      = $item['url'] ?? null;
+			$raw_type = $item['type'] ?? null;
+			$type     = is_string( $raw_type ) ? PurgeType::tryFrom( $raw_type ) : $raw_type;
+
+			if ( ! is_string( $url ) || ! $type instanceof PurgeType ) {
+				$this->logger->error(
+					'URL Delver',
+					'Dropped invalid sitemap purge item for ' . $context_log . ': expected url string and PurgeType, got url ' .
+					get_debug_type( $url ) . ', type ' . get_debug_type( $raw_type )
+				);
+				continue;
+			}
+
+			$valid_items[] = [
+				'url'  => $url,
+				'type' => $type,
+			];
+		}
+
+		return $valid_items;
+	}
+
+	/**
+	 * Whether an array is a single purge item rather than a list of items.
+	 *
+	 * @param array<mixed> $item Candidate item.
+	 * @return bool
+	 */
+	private function is_raw_purge_item( array $item ): bool {
+		return array_key_exists( 'url', $item ) || array_key_exists( 'type', $item );
+	}
+
+	/**
+	 * Format filter context for logs.
+	 *
+	 * @param array<string,string> $context Context values.
+	 * @return string
+	 */
+	private function format_context( array $context ): string {
+		$parts = [];
+		foreach ( $context as $key => $value ) {
+			$parts[] = $key . '=' . $value;
+		}
+
+		return implode( ', ', $parts );
 	}
 
 	/**

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZuidWest Cache Manager
  * Description: Purges Cloudflare cache when content changes. Queues taxonomy URLs for batch processing.
- * Version: 1.7.0
+ * Version: 1.8.0
  * Author: Streekomroep ZuidWest
  * Author URI: https://www.zuidwesttv.nl
  * License: GPL-2.0-or-later
@@ -52,8 +52,27 @@ function zw_cacheman_init() {
 	$api        = new ZW_CACHEMAN_Core\CachemanAPI( $url_helper, $logger );
 
 	$sitemap_provider = ZW_CACHEMAN_Core\CachemanSitemapProviderFactory::detect( $logger );
+	/**
+	 * Filter the sitemap provider used for sitemap purge items.
+	 *
+	 * Return null to disable sitemap purging.
+	 *
+	 * @since 1.8.0
+	 *
+	 * @param ZW_CACHEMAN_Core\CachemanSitemapProvider|null $sitemap_provider Detected sitemap provider, or null.
+	 * @param ZW_CACHEMAN_Core\CachemanLogger               $logger           Logger instance.
+	 */
 	$sitemap_provider = apply_filters( 'zw_cacheman_sitemap_provider', $sitemap_provider, $logger );
+	/**
+	 * Filtered provider value from a public hook.
+	 *
+	 * @var mixed $sitemap_provider
+	 */
 	if ( null !== $sitemap_provider && ! $sitemap_provider instanceof ZW_CACHEMAN_Core\CachemanSitemapProvider ) {
+		$logger->error(
+			'Bootstrap',
+			'Invalid zw_cacheman_sitemap_provider result: expected CachemanSitemapProvider or null, got ' . get_debug_type( $sitemap_provider )
+		);
 		$sitemap_provider = null;
 	}
 

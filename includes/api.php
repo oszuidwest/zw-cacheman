@@ -17,6 +17,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 readonly class CachemanAPI {
 
 	/**
+	 * Conservative Cloudflare batch size for single-file purge requests.
+	 */
+	private const FILE_BATCH_SIZE = 100;
+
+	/**
+	 * Cloudflare's documented per-request limit for prefix purge requests.
+	 */
+	private const PREFIX_BATCH_SIZE = 30;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanUrlHelper $url_helper The URL helper instance.
@@ -29,8 +39,7 @@ readonly class CachemanAPI {
 	}
 
 	/**
-	 * Purge URLs via Cloudflare API. Batches into groups of 30 (Cloudflare's
-	 * per-call maximum on Business plans); returns false if any batch failed.
+	 * Purge URLs via Cloudflare API. Returns false if any batch failed.
 	 *
 	 * @param array<string> $urls URLs to purge.
 	 * @return bool Success or failure.
@@ -48,103 +57,17 @@ readonly class CachemanAPI {
 			return true;
 		}
 
-		// Cloudflare's purge_cache API accepts at most 30 files per request.
-		$batch_size = 30;
-		$batches    = array_chunk( $clean_urls, $batch_size );
-
-		if ( count( $batches ) > 1 ) {
-			$this->logger->debug( 'API', 'Splitting ' . count( $clean_urls ) . ' URLs into ' . count( $batches ) . ' batches of ' . $batch_size );
-		}
-
-		$failed_batches = 0;
-		foreach ( $batches as $index => $batch ) {
-			if ( ! $this->send_files_purge_request( $batch ) ) {
-				++$failed_batches;
-				$this->logger->error( 'API', 'Failed to purge file batch #' . ( $index + 1 ) . ' of ' . count( $batches ) );
-			}
-		}
-
-		if ( 0 === $failed_batches ) {
-			return true;
-		}
-
-		$this->logger->error(
-			'API',
-			'Failed to purge ' . $failed_batches . ' out of ' . count( $batches ) . ' file batches (' .
-			count( $clean_urls ) . ' total URLs)'
-		);
-		return false;
+		return $this->purge_in_batches( $clean_urls, self::FILE_BATCH_SIZE, $this->send_files_purge_request( ... ), 'file URL', 'file URLs' );
 	}
 
 	/**
 	 * Send a single Cloudflare purge_cache request for a batch of files.
 	 *
-	 * @param array<string> $files Cleaned URLs, max 30 entries.
+	 * @param array<string> $files Cleaned URLs.
 	 * @return bool
 	 */
 	private function send_files_purge_request( array $files ): bool {
-		$settings = get_option( ZW_CACHEMAN_SETTINGS, array() );
-		$zone_id  = ! empty( $settings['zone_id'] ) ? $settings['zone_id'] : '';
-		$api_key  = ! empty( $settings['api_key'] ) ? $settings['api_key'] : '';
-
-		if ( empty( $zone_id ) || empty( $api_key ) ) {
-			$this->logger->error( 'API', 'Cloudflare credentials missing. Cannot purge URLs.' );
-			return false;
-		}
-
-		$api_endpoint = 'https://api.cloudflare.com/client/v4/zones/' . $zone_id . '/purge_cache';
-
-		$request_body = wp_json_encode(
-			array(
-				'files' => $files,
-			)
-		);
-
-		$this->logger->debug( 'API', 'Sending request to Cloudflare with ' . count( $files ) . ' URLs' );
-		$this->logger->debug( 'API', 'Request body: ' . $request_body );
-
-		$response = wp_remote_post(
-			$api_endpoint,
-			array(
-				'timeout' => 30,
-				'headers' => array(
-					'Authorization' => 'Bearer ' . $api_key,
-					'Content-Type'  => 'application/json',
-				),
-				'body'    => $request_body,
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			$error_message = $response->get_error_message();
-			$this->logger->error( 'API', 'API request failed: ' . $error_message );
-			return false;
-		}
-
-		$response_code = wp_remote_retrieve_response_code( $response );
-		$body          = wp_remote_retrieve_body( $response );
-		$body_json     = json_decode( $body, true );
-
-		if ( 200 === $response_code && isset( $body_json['success'] ) && true === $body_json['success'] ) {
-			$this->logger->debug( 'API', 'Successfully purged ' . count( $files ) . ' URLs' );
-			return true;
-		}
-
-		$error      = isset( $body_json['errors'][0]['message'] ) ? $body_json['errors'][0]['message'] : 'Unknown error';
-		$error_code = isset( $body_json['errors'][0]['code'] ) ? $body_json['errors'][0]['code'] : 'Unknown code';
-
-		// Log the error with both HTTP and API codes.
-		$this->logger->error( 'API', 'Failed to purge URLs. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error );
-		$this->logger->error( 'API', 'Response body: ' . $body );
-
-		// Log the failed URLs.
-		$this->logger->error(
-			'API',
-			'Failed to purge the following URLs: ' . implode( ', ', array_slice( $files, 0, 5 ) ) .
-			( count( $files ) > 5 ? ' and ' . ( count( $files ) - 5 ) . ' more.' : '' )
-		);
-
-		return false;
+		return $this->send_purge_request( 'files', $files, 'URLs' );
 	}
 
 	/**
@@ -166,12 +89,71 @@ readonly class CachemanAPI {
 			return true;
 		}
 
+		return $this->purge_in_batches( $clean_prefixes, self::PREFIX_BATCH_SIZE, $this->send_prefixes_purge_request( ... ), 'prefix', 'prefixes' );
+	}
+
+	/**
+	 * Send a single Cloudflare purge_cache request for a batch of prefixes.
+	 *
+	 * @param array<string> $prefixes Cleaned prefixes.
+	 * @return bool
+	 */
+	private function send_prefixes_purge_request( array $prefixes ): bool {
+		return $this->send_purge_request( 'prefixes', $prefixes, 'prefixes' );
+	}
+
+	/**
+	 * Purge items in batches.
+	 *
+	 * @param array<string>                 $items      Items to purge.
+	 * @param int                           $batch_size Batch size.
+	 * @param callable(array<string>): bool $sender     Batch sender.
+	 * @param string                        $singular   Singular noun for logs.
+	 * @param string                        $plural     Plural noun for logs.
+	 * @return bool
+	 */
+	private function purge_in_batches( array $items, int $batch_size, callable $sender, string $singular, string $plural ): bool {
+		$batches = array_chunk( $items, $batch_size );
+
+		if ( count( $batches ) > 1 ) {
+			$this->logger->debug( 'API', 'Splitting ' . count( $items ) . ' ' . $plural . ' into ' . count( $batches ) . ' batches of ' . $batch_size );
+		}
+
+		$failed_batches = 0;
+		foreach ( $batches as $index => $batch ) {
+			if ( ! $sender( $batch ) ) {
+				++$failed_batches;
+				$this->logger->error( 'API', 'Failed to purge ' . $singular . ' batch #' . ( $index + 1 ) . ' of ' . count( $batches ) );
+			}
+		}
+
+		if ( 0 === $failed_batches ) {
+			return true;
+		}
+
+		$this->logger->error(
+			'API',
+			'Failed to purge ' . $failed_batches . ' out of ' . count( $batches ) . ' ' . $singular . ' batches (' .
+			count( $items ) . ' total ' . $plural . ')'
+		);
+		return false;
+	}
+
+	/**
+	 * Send a Cloudflare purge_cache request.
+	 *
+	 * @param string        $payload_key    Cloudflare payload key.
+	 * @param array<string> $items          Items to purge.
+	 * @param string        $plural_noun    Plural noun for logs.
+	 * @return bool
+	 */
+	private function send_purge_request( string $payload_key, array $items, string $plural_noun ): bool {
 		$settings = get_option( ZW_CACHEMAN_SETTINGS, array() );
 		$zone_id  = ! empty( $settings['zone_id'] ) ? $settings['zone_id'] : '';
 		$api_key  = ! empty( $settings['api_key'] ) ? $settings['api_key'] : '';
 
 		if ( empty( $zone_id ) || empty( $api_key ) ) {
-			$this->logger->error( 'API', 'Cloudflare credentials missing. Cannot purge prefixes.' );
+			$this->logger->error( 'API', 'Cloudflare credentials missing. Cannot purge ' . $plural_noun . '.' );
 			return false;
 		}
 
@@ -179,11 +161,15 @@ readonly class CachemanAPI {
 
 		$request_body = wp_json_encode(
 			array(
-				'prefixes' => $clean_prefixes,
+				$payload_key => $items,
 			)
 		);
+		if ( false === $request_body ) {
+			$this->logger->error( 'API', 'Failed to JSON-encode Cloudflare purge request for ' . $plural_noun . '.' );
+			return false;
+		}
 
-		$this->logger->debug( 'API', 'Sending request to Cloudflare with ' . count( $clean_prefixes ) . ' prefixes' );
+		$this->logger->debug( 'API', 'Sending request to Cloudflare with ' . count( $items ) . ' ' . $plural_noun );
 		$this->logger->debug( 'API', 'Request body: ' . $request_body );
 
 		$response = wp_remote_post(
@@ -209,25 +195,28 @@ readonly class CachemanAPI {
 		$body_json     = json_decode( $body, true );
 
 		if ( 200 === $response_code && isset( $body_json['success'] ) && true === $body_json['success'] ) {
-			$this->logger->debug( 'API', 'Successfully purged ' . count( $clean_prefixes ) . ' prefixes' );
+			$this->logger->debug( 'API', 'Successfully purged ' . count( $items ) . ' ' . $plural_noun );
 			return true;
-		} else {
-			$error      = isset( $body_json['errors'][0]['message'] ) ? $body_json['errors'][0]['message'] : 'Unknown error';
-			$error_code = isset( $body_json['errors'][0]['code'] ) ? $body_json['errors'][0]['code'] : 'Unknown code';
-
-			// Log the error with both HTTP and API codes.
-			$this->logger->error( 'API', 'Failed to purge prefixes. Code: ' . $response_code . ', Error: ' . $error_code . ' - ' . $error );
-			$this->logger->error( 'API', 'Response body: ' . $body );
-
-			// Log the failed prefixes.
-			$this->logger->error(
-				'API',
-				'Failed to purge the following prefixes: ' . implode( ', ', array_slice( $clean_prefixes, 0, 5 ) ) .
-				( count( $clean_prefixes ) > 5 ? ' and ' . ( count( $clean_prefixes ) - 5 ) . ' more.' : '' )
-			);
-
-			return false;
 		}
+
+		$error      = isset( $body_json['errors'][0]['message'] ) ? $body_json['errors'][0]['message'] : 'Unknown error';
+		$error_code = isset( $body_json['errors'][0]['code'] ) ? $body_json['errors'][0]['code'] : 'Unknown code';
+
+		// Log the error with both HTTP and API codes.
+		$this->logger->error(
+			'API',
+			'Failed to purge ' . $plural_noun . '. HTTP Code: ' . $response_code . ', API Error Code: ' . $error_code . ', Message: ' . $error
+		);
+		$this->logger->error( 'API', 'Response body: ' . $body );
+
+		// Log the failed items.
+		$this->logger->error(
+			'API',
+			'Failed to purge the following ' . $plural_noun . ': ' . implode( ', ', array_slice( $items, 0, 5 ) ) .
+			( count( $items ) > 5 ? ' and ' . ( count( $items ) - 5 ) . ' more.' : '' )
+		);
+
+		return false;
 	}
 
 	/**
@@ -266,30 +255,14 @@ readonly class CachemanAPI {
 			}
 		}
 
-		// Purge prefixes in batches of 30 (Cloudflare limit).
+		// Purge prefixes.
 		$prefixes_success = true;
 		if ( ! empty( $prefixes ) ) {
-			$batch_size    = 30;
-			$prefix_chunks = array_chunk( $prefixes, $batch_size );
-			$failed_chunks = 0;
-
-			foreach ( $prefix_chunks as $index => $chunk ) {
-				$success = $this->purge_url_prefixes( $chunk );
-				if ( ! $success ) {
-					$prefixes_success = false;
-					++$failed_chunks;
-					$this->logger->error( 'API', 'Failed to purge prefix batch #' . ( $index + 1 ) . ' of ' . count( $prefix_chunks ) );
-				}
-			}
-
+			$prefixes_success = $this->purge_url_prefixes( $prefixes );
 			if ( $prefixes_success ) {
 				$this->logger->debug( 'API', 'Successfully purged all ' . count( $prefixes ) . ' URL prefixes' );
 			} else {
-				$this->logger->error(
-					'API',
-					'Failed to purge ' . $failed_chunks . ' out of ' . count( $prefix_chunks ) . ' prefix batches (' .
-					count( $prefixes ) . ' total prefixes)'
-				);
+				$this->logger->error( 'API', 'Failed to purge ' . count( $prefixes ) . ' URL prefixes' );
 			}
 		}
 
