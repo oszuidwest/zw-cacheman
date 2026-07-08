@@ -2,11 +2,11 @@
 /**
  * Plugin Name: ZuidWest Cache Manager
  * Description: Purges Cloudflare cache when content changes. Queues taxonomy URLs for batch processing.
- * Version: 1.7.0
+ * Version: 1.8.0
  * Author: Streekomroep ZuidWest
  * Author URI: https://www.zuidwesttv.nl
- * License: GPL-2.0-or-later
- * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * License: GPL-3.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Requires at least: 6.8
  * Requires PHP: 8.3
  * Text Domain: zw-cacheman
@@ -30,6 +30,9 @@ require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
 require_once ZW_CACHEMAN_DIR . 'includes/logger.php';
 require_once ZW_CACHEMAN_DIR . 'includes/url-helper.php';
 require_once ZW_CACHEMAN_DIR . 'includes/api.php';
+require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider.php';
+require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-yoast.php';
+require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-factory.php';
 require_once ZW_CACHEMAN_DIR . 'includes/url-delver.php';
 require_once ZW_CACHEMAN_DIR . 'includes/cache-manager.php';
 require_once ZW_CACHEMAN_DIR . 'includes/admin.php';
@@ -47,8 +50,10 @@ function zw_cacheman_init() {
 	$logger     = new ZW_CACHEMAN_Core\CachemanLogger( ! empty( $settings['debug_mode'] ) );
 	$url_helper = new ZW_CACHEMAN_Core\CachemanUrlHelper( $logger );
 	$api        = new ZW_CACHEMAN_Core\CachemanAPI( $url_helper, $logger );
-	$url_delver = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger );
-	$manager    = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger );
+
+	$sitemap_provider = ZW_CACHEMAN_Core\CachemanSitemapProviderFactory::detect( $logger );
+	$url_delver       = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger, $sitemap_provider );
+	$manager          = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger );
 
 	// Only load admin interface in admin area.
 	if ( is_admin() ) {

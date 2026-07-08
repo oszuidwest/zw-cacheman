@@ -17,6 +17,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 readonly class CachemanUrlHelper {
 
 	/**
+	 * Regex matching URLs that end in a known file extension.
+	 */
+	private const FILE_EXTENSION_PATTERN =
+		'/\.(?:atom|avif|css|eot|gif|html?|ico|jpe?g|js|json|map|mp3|mp4|ogg|pdf|png|rdf|rss|svg|ttf|txt|webm|webp|woff2?|xml|zip)$/i';
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanLogger $logger The logger instance.
@@ -62,12 +68,22 @@ readonly class CachemanUrlHelper {
 			$clean_url .= '/';
 		}
 
-		// Add trailing slash if requested.
-		if ( $add_trailing_slash ) {
+		// Skip trailing slash for known file URLs.
+		if ( $add_trailing_slash && ! $this->has_file_extension( $clean_url ) ) {
 			$clean_url = trailingslashit( $clean_url );
 		}
 
 		return $clean_url;
+	}
+
+	/**
+	 * Whether a URL ends in a known file extension.
+	 *
+	 * @param string $url URL to inspect.
+	 * @return bool
+	 */
+	private function has_file_extension( string $url ): bool {
+		return (bool) preg_match( self::FILE_EXTENSION_PATTERN, $url );
 	}
 
 	/**

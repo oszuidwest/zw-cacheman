@@ -98,18 +98,10 @@ readonly class CachemanManager {
 		// Only process on publish/unpublish.
 		if ( 'publish' === $new_status || 'publish' === $old_status ) {
 			// High priority purge items to process immediately.
-			$high_priority_items = $this->url_delver->get_high_priority_purge_items( $post );
-
-			if ( ! empty( $high_priority_items ) ) {
-				$this->logger->debug( 'Manager', 'Processing ' . count( $high_priority_items ) . ' high priority purge items for post ID ' . $post->ID );
-				$result = $this->api->process_purge_items( $high_priority_items );
-
-				if ( ! $result ) {
-					$this->logger->error( 'Manager', 'Failed to process high priority purge items for post ID ' . $post->ID );
-				}
-			} else {
-				$this->logger->debug( 'Manager', 'No high priority purge items found for post ID ' . $post->ID );
-			}
+			$this->purge_now_or_queue(
+				$this->url_delver->get_high_priority_purge_items( $post ),
+				'high priority purge items for post ID ' . $post->ID
+			);
 
 			// Queue low priority items for later processing.
 			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post );
@@ -138,18 +130,10 @@ readonly class CachemanManager {
 		$this->logger->debug( 'Manager', 'Post ' . $post_id . ' (' . $post->post_title . ') was deleted' );
 
 		// Get purge items for a deleted post.
-		$purge_items = $this->url_delver->get_deleted_post_purge_items( $post_id, $post );
-
-		if ( ! empty( $purge_items ) ) {
-			$this->logger->debug( 'Manager', 'Processing ' . count( $purge_items ) . ' purge items for deleted post ID ' . $post_id );
-			$result = $this->api->process_purge_items( $purge_items );
-
-			if ( ! $result ) {
-				$this->logger->error( 'Manager', 'Failed to process purge items for deleted post ID ' . $post_id );
-			}
-		} else {
-			$this->logger->debug( 'Manager', 'No purge items found for deleted post ID ' . $post_id );
-		}
+		$this->purge_now_or_queue(
+			$this->url_delver->get_deleted_post_purge_items( $post_id, $post ),
+			'purge items for deleted post ID ' . $post_id
+		);
 	}
 
 	/**
@@ -170,18 +154,10 @@ readonly class CachemanManager {
 		}
 
 		// High priority purge items to process immediately.
-		$high_priority_items = $this->url_delver->get_high_priority_term_purge_items( $term, $taxonomy );
-
-		if ( ! empty( $high_priority_items ) ) {
-			$this->logger->debug( 'Manager', 'Processing ' . count( $high_priority_items ) . ' high priority purge items for term ID ' . $term_id );
-			$result = $this->api->process_purge_items( $high_priority_items );
-
-			if ( ! $result ) {
-				$this->logger->error( 'Manager', 'Failed to process high priority purge items for term ID ' . $term_id );
-			}
-		} else {
-			$this->logger->debug( 'Manager', 'No high priority purge items found for term ID ' . $term_id );
-		}
+		$this->purge_now_or_queue(
+			$this->url_delver->get_high_priority_term_purge_items( $term, $taxonomy ),
+			'high priority purge items for term ID ' . $term_id
+		);
 
 		// Queue low priority items for later processing.
 		$low_priority_items = $this->url_delver->get_low_priority_term_purge_items( $term, $taxonomy );
@@ -205,17 +181,29 @@ readonly class CachemanManager {
 		$this->logger->debug( 'Manager', 'Term ' . $term_id . ' in taxonomy ' . $taxonomy . ' was deleted' );
 
 		// Get purge items for a deleted term.
-		$purge_items = $this->url_delver->get_deleted_term_purge_items( $term_id, $taxonomy );
+		$this->purge_now_or_queue(
+			$this->url_delver->get_deleted_term_purge_items( $term_id, $taxonomy ),
+			'purge items for deleted term ID ' . $term_id
+		);
+	}
 
-		if ( ! empty( $purge_items ) ) {
-			$this->logger->debug( 'Manager', 'Processing ' . count( $purge_items ) . ' purge items for deleted term ID ' . $term_id );
-			$result = $this->api->process_purge_items( $purge_items );
+	/**
+	 * Purge items immediately, re-queueing them when the purge fails.
+	 *
+	 * @param array<array{type: PurgeType, url: string}> $items       Items to purge.
+	 * @param string                                     $description Item description for logs.
+	 */
+	private function purge_now_or_queue( array $items, string $description ): void {
+		if ( empty( $items ) ) {
+			$this->logger->debug( 'Manager', 'No ' . $description . ' found' );
+			return;
+		}
 
-			if ( ! $result ) {
-				$this->logger->error( 'Manager', 'Failed to process purge items for deleted term ID ' . $term_id );
-			}
-		} else {
-			$this->logger->debug( 'Manager', 'No purge items found for deleted term ID ' . $term_id );
+		$this->logger->debug( 'Manager', 'Processing ' . count( $items ) . ' ' . $description );
+
+		if ( ! $this->api->process_purge_items( $items ) ) {
+			$this->logger->error( 'Manager', 'Failed to process ' . $description );
+			$this->queue_purge_items( $items );
 		}
 	}
 
