@@ -7,7 +7,7 @@
  * Author URI: https://www.zuidwesttv.nl
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
- * Requires at least: 6.8
+ * Requires at least: 7.0
  * Requires PHP: 8.3
  * Text Domain: zw-cacheman
  *
