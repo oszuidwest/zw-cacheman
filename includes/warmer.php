@@ -35,6 +35,19 @@ readonly class CachemanWarmer {
 	private const WARM_QUEUE_MAX = 500;
 
 	/**
+	 * Option used as an atomic lock for warm-queue mutations.
+	 */
+	private const WARM_QUEUE_LOCK = 'zw_cacheman_warm_queue_lock';
+
+	/**
+	 * Lock lifetime and retry interval. Queue mutations are local option
+	 * updates, so the lock should normally be held for only milliseconds.
+	 */
+	private const WARM_QUEUE_LOCK_TTL_SECONDS        = 30;
+	private const WARM_QUEUE_LOCK_RETRY_MICROSECONDS = 50_000;
+	private const WARM_QUEUE_LOCK_ATTEMPTS           = 40;
+
+	/**
 	 * Header used to authenticate cache-warming requests at Cloudflare.
 	 */
 	private const WARM_TOKEN_HEADER = 'X-ZW-Cache-Warm-Token';
@@ -74,17 +87,21 @@ readonly class CachemanWarmer {
 			return;
 		}
 
-		$queue = array_values( array_unique( array_merge( $this->read_queue(), $urls ) ) );
+		$this->update_queue(
+			function ( array $queue ) use ( $urls ): array {
+				$queue = array_values( array_unique( array_merge( $queue, $urls ) ) );
 
-		if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
-			$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
-			if ( false === get_transient( 'zw_cacheman_warm_queue_overflow' ) ) {
-				$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
-				set_transient( 'zw_cacheman_warm_queue_overflow', true, 5 * MINUTE_IN_SECONDS );
+				if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
+					$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
+					if ( false === get_transient( 'zw_cacheman_warm_queue_overflow' ) ) {
+						$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
+						set_transient( 'zw_cacheman_warm_queue_overflow', true, 5 * MINUTE_IN_SECONDS );
+					}
+				}
+
+				return $queue;
 			}
-		}
-
-		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
+		);
 	}
 
 	/**
@@ -92,14 +109,14 @@ readonly class CachemanWarmer {
 	 * purge pass. Keeps each WP-Cron pass short instead of processing a whole
 	 * burst at once. Items are removed only after a successful warm, and the
 	 * queue is re-read before writing, so a crash mid-batch does not lose
-	 * failed URLs and (with a persistent object cache) concurrently queued
-	 * URLs are preserved.
+	 * failed URLs and the shared mutation lock preserves concurrently queued
+	 * URLs.
 	 */
 	public function process_queue(): void {
 		if ( ! $this->enabled ) {
 			// Warming was turned off; drop any URLs still parked in the queue.
 			if ( [] !== $this->read_queue() ) {
-				delete_option( ZW_CACHEMAN_WARM_QUEUE );
+				$this->clear_queue();
 			}
 			return;
 		}
@@ -118,8 +135,9 @@ readonly class CachemanWarmer {
 
 		// Re-read and drop only the URLs we warmed; failed fetches stay
 		// queued for the next run.
-		$queue = array_values( array_diff( $this->read_queue(), $warmed ) );
-		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
+		$this->update_queue(
+			static fn ( array $current_queue ): array => array_values( array_diff( $current_queue, $warmed ) )
+		);
 	}
 
 	/**
@@ -167,6 +185,108 @@ readonly class CachemanWarmer {
 	private function read_queue(): array {
 		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
 		return is_array( $queue ) ? $queue : [];
+	}
+
+	/**
+	 * Delete the warm queue under the shared option lock.
+	 */
+	private function clear_queue(): void {
+		$lock = $this->acquire_queue_lock();
+		if ( null === $lock ) {
+			return;
+		}
+
+		try {
+			delete_option( ZW_CACHEMAN_WARM_QUEUE );
+		} finally {
+			$this->release_queue_lock( $lock );
+		}
+	}
+
+	/**
+	 * Atomically mutate the warm queue under the shared option lock.
+	 *
+	 * @param callable(array<string>): array<string> $update Queue mutation.
+	 * @return bool Whether the queue was updated.
+	 */
+	private function update_queue( callable $update ): bool {
+		$lock = $this->acquire_queue_lock();
+		if ( null === $lock ) {
+			return false;
+		}
+
+		try {
+			update_option( ZW_CACHEMAN_WARM_QUEUE, $update( $this->read_queue() ), false );
+			return true;
+		} finally {
+			$this->release_queue_lock( $lock );
+		}
+	}
+
+	/**
+	 * Acquire the shared warm-queue lock.
+	 *
+	 * The add_option() function provides the atomic uncontended path. An
+	 * expired lock is replaced with a compare-and-swap update so only one
+	 * waiter can steal it.
+	 *
+	 * @return string|null Lock value owned by this request, or null on timeout.
+	 */
+	private function acquire_queue_lock(): ?string {
+		global $wpdb;
+
+		$lock = ( time() + self::WARM_QUEUE_LOCK_TTL_SECONDS ) . '|' . wp_generate_uuid4();
+
+		for ( $attempt = 0; $attempt < self::WARM_QUEUE_LOCK_ATTEMPTS; $attempt++ ) {
+			if ( add_option( self::WARM_QUEUE_LOCK, $lock, '', false ) ) {
+				return $lock;
+			}
+
+			$current_lock = get_option( self::WARM_QUEUE_LOCK, '' );
+			if ( is_string( $current_lock ) && (int) $current_lock < time() ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- A conditional update is required for atomic stale-lock recovery.
+				$updated = $wpdb->update(
+					$wpdb->options,
+					[ 'option_value' => $lock ],
+					[
+						'option_name'  => self::WARM_QUEUE_LOCK,
+						'option_value' => $current_lock,
+					],
+					[ '%s' ],
+					[ '%s', '%s' ]
+				);
+				wp_cache_delete( self::WARM_QUEUE_LOCK, 'options' );
+
+				if ( 1 === $updated ) {
+					return $lock;
+				}
+			}
+
+			usleep( self::WARM_QUEUE_LOCK_RETRY_MICROSECONDS );
+		}
+
+		$this->logger->error( 'Warmer', 'Could not acquire the warm queue lock; queue update skipped' );
+		return null;
+	}
+
+	/**
+	 * Release the lock only when it is still owned by this request.
+	 *
+	 * @param string $lock Lock value returned by acquire_queue_lock().
+	 */
+	private function release_queue_lock( string $lock ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- The owner check prevents an expired lock from releasing its replacement.
+		$wpdb->delete(
+			$wpdb->options,
+			[
+				'option_name'  => self::WARM_QUEUE_LOCK,
+				'option_value' => $lock,
+			],
+			[ '%s', '%s' ]
+		);
+		wp_cache_delete( self::WARM_QUEUE_LOCK, 'options' );
 	}
 
 	/**
