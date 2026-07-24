@@ -19,13 +19,13 @@ readonly class CachemanWarmer {
 	/**
 	 * Request timeout, in seconds, for a single warm fetch.
 	 */
-	private const WARM_TIMEOUT_SECONDS = 15;
+	private const WARM_TIMEOUT_SECONDS = 10;
 
 	/**
-	 * Spacing, in seconds, between warm events so a burst does not run
-	 * back-to-back in a single WP-Cron pass.
+	 * Maximum number of URLs warmed per cron run. Bounds how long a single
+	 * WP-Cron pass can block (batch x timeout stays under the cron lock).
 	 */
-	private const WARM_STAGGER_SECONDS = 15;
+	private const WARM_BATCH_SIZE = 5;
 
 	/**
 	 * Constructor
@@ -37,11 +37,11 @@ readonly class CachemanWarmer {
 		private CachemanLogger $logger,
 		private bool $enabled = false
 	) {
-		add_action( ZW_CACHEMAN_WARM_HOOK, $this->warm( ... ), 10, 1 );
+		add_action( ZW_CACHEMAN_WARM_HOOK, $this->process_queue( ... ) );
 	}
 
 	/**
-	 * Schedule warming for the page URLs among a set of purge items.
+	 * Queue the warmable page URLs from a set of purge items.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $items Purged items.
 	 */
@@ -50,28 +50,71 @@ readonly class CachemanWarmer {
 			return;
 		}
 
-		// One event per URL, so repeats (e.g. the homepage after a burst of
-		// publishes) de-duplicate within WP-Cron's window. Events are staggered
-		// so a large batch does not run back-to-back in a single cron pass and
-		// tie up the worker.
-		$offset = 0;
-		foreach ( $this->page_urls_from_items( $items ) as $url ) {
-			if ( wp_next_scheduled( ZW_CACHEMAN_WARM_HOOK, [ $url ] ) ) {
-				continue;
-			}
-			wp_schedule_single_event( time() + $offset, ZW_CACHEMAN_WARM_HOOK, [ $url ] );
-			$this->logger->debug( 'Warmer', 'Scheduled warming of ' . $url );
-			$offset += self::WARM_STAGGER_SECONDS;
+		$urls = $this->page_urls_from_items( $items );
+		if ( empty( $urls ) ) {
+			return;
+		}
+
+		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			$queue = [];
+		}
+		$queue = array_values( array_unique( array_merge( $queue, $urls ) ) );
+		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
+
+		$this->schedule_run();
+	}
+
+	/**
+	 * Warm a bounded batch from the queue, rescheduling while items remain
+	 * (cron callback). Keeps each WP-Cron pass short instead of processing a
+	 * whole burst at once.
+	 */
+	public function process_queue(): void {
+		if ( ! $this->enabled ) {
+			return;
+		}
+
+		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
+		if ( ! is_array( $queue ) || empty( $queue ) ) {
+			return;
+		}
+
+		$batch     = array_slice( $queue, 0, self::WARM_BATCH_SIZE );
+		$remaining = array_slice( $queue, self::WARM_BATCH_SIZE );
+		update_option( ZW_CACHEMAN_WARM_QUEUE, $remaining, false );
+
+		foreach ( $batch as $url ) {
+			$this->warm( $url );
+		}
+
+		if ( ! empty( $remaining ) ) {
+			$this->schedule_run();
 		}
 	}
 
 	/**
-	 * Warm a single URL by fetching it (cron callback).
+	 * Ensure a single drain event is scheduled.
+	 */
+	private function schedule_run(): void {
+		if ( wp_next_scheduled( ZW_CACHEMAN_WARM_HOOK ) ) {
+			return;
+		}
+
+		if ( wp_schedule_single_event( time(), ZW_CACHEMAN_WARM_HOOK ) ) {
+			$this->logger->debug( 'Warmer', 'Scheduled warm run' );
+		} else {
+			$this->logger->error( 'Warmer', 'Failed to schedule warm run' );
+		}
+	}
+
+	/**
+	 * Warm a single URL by fetching it.
 	 *
 	 * @param string $url URL to warm.
 	 */
-	public function warm( string $url ): void {
-		if ( ! $this->enabled || '' === $url ) {
+	private function warm( string $url ): void {
+		if ( '' === $url ) {
 			return;
 		}
 

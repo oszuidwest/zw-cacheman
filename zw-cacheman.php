@@ -25,6 +25,7 @@ define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
 define( 'ZW_CACHEMAN_WARM_HOOK', 'zw_cacheman_warm_hook' );
+define( 'ZW_CACHEMAN_WARM_QUEUE', 'zw_cacheman_warm_queue' );
 
 // Includes required files.
 require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
@@ -117,6 +118,7 @@ function zw_cacheman_uninstall() {
 	// Clean up all plugin data.
 	delete_option( ZW_CACHEMAN_SETTINGS );
 	delete_option( ZW_CACHEMAN_QUEUE );
+	delete_option( ZW_CACHEMAN_WARM_QUEUE );
 
 	// Clean up log directory.
 	$upload_dir = wp_upload_dir();
