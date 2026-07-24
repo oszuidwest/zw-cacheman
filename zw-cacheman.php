@@ -24,7 +24,6 @@ define( 'ZW_CACHEMAN_URL', plugin_dir_url( __FILE__ ) );
 define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
-define( 'ZW_CACHEMAN_WARM_HOOK', 'zw_cacheman_warm_hook' );
 define( 'ZW_CACHEMAN_WARM_QUEUE', 'zw_cacheman_warm_queue' );
 
 // Includes required files.
@@ -102,10 +101,6 @@ function zw_cacheman_deactivate() {
 	if ( $timestamp ) {
 		wp_unschedule_event( $timestamp, ZW_CACHEMAN_CRON_HOOK );
 	}
-
-	// Clear pending one-off warming events. wp_unschedule_hook() clears them
-	// regardless of their per-URL args (wp_clear_scheduled_hook() would not).
-	wp_unschedule_hook( ZW_CACHEMAN_WARM_HOOK );
 }
 register_deactivation_hook( __FILE__, 'zw_cacheman_deactivate' );
 

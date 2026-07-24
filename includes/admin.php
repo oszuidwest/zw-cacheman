@@ -163,6 +163,14 @@ readonly class CachemanAdmin {
 		);
 
 		add_settings_field(
+			'warm_token_status',
+			__( 'WAF Warm Token Configured', 'zw-cacheman' ),
+			$this->render_warm_token_status( ... ),
+			'zw_cacheman_settings',
+			'zw_cacheman_main_section'
+		);
+
+		add_settings_field(
 			'debug_mode',
 			__( 'Debug Mode', 'zw-cacheman' ),
 			$this->render_field( ... ),
@@ -222,6 +230,26 @@ readonly class CachemanAdmin {
 			),
 			default => null
 		};
+	}
+
+	/**
+	 * Render the WAF warm-token configuration status without exposing its value.
+	 */
+	public function render_warm_token_status(): void {
+		$configured = CachemanWarmer::has_valid_waf_token();
+
+		echo '<strong>' . esc_html( $configured ? __( 'Yes', 'zw-cacheman' ) : __( 'No', 'zw-cacheman' ) ) . '</strong>';
+
+		if ( $configured ) {
+			echo '<p class="description">' . esc_html__( 'A valid token is configured in wp-config.php.', 'zw-cacheman' ) . '</p>';
+			return;
+		}
+
+		printf(
+			'<p class="description">%s <code>ZW_CACHEMAN_WARM_TOKEN</code> %s</p>',
+			esc_html__( 'Define', 'zw-cacheman' ),
+			esc_html__( 'in wp-config.php as exactly 64 hexadecimal characters to authenticate Cloudflare WAF exceptions.', 'zw-cacheman' )
+		);
 	}
 
 	/**

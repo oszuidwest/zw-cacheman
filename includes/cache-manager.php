@@ -203,12 +203,25 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items ) . ' ' . $description );
 
-		if ( $this->api->process_purge_items( $items ) ) {
-			$this->warmer->schedule( $items );
-		} else {
+		if ( ! $this->purge_items( $items ) ) {
 			$this->logger->error( 'Manager', 'Failed to process ' . $description );
 			$this->queue_purge_items( $items );
 		}
+	}
+
+	/**
+	 * Purge items via the API, queueing them for cache warming on success.
+	 *
+	 * @param array<array{type: PurgeType, url: string}> $items Items to purge.
+	 * @return bool Whether the purge succeeded.
+	 */
+	private function purge_items( array $items ): bool {
+		if ( ! $this->api->process_purge_items( $items ) ) {
+			return false;
+		}
+
+		$this->warmer->enqueue( $items );
+		return true;
 	}
 
 	/**
@@ -270,14 +283,10 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items (' . count( $remaining_items ) . ' remaining)' );
 
-		// Process the batch using the API's process_purge_items method.
-		$success = $this->api->process_purge_items( $items_to_process );
-
-		if ( $success ) {
+		if ( $this->purge_items( $items_to_process ) ) {
 			// Update the queue with remaining items (autoload disabled for performance).
 			update_option( ZW_CACHEMAN_QUEUE, $remaining_items, false );
 			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $remaining_items ) . ' items remaining in queue.' );
-			$this->warmer->schedule( $items_to_process );
 		} else {
 			$this->logger->error( 'Manager', 'Failed to process batch of ' . count( $items_to_process ) . ' items. Will retry next run.' );
 		}

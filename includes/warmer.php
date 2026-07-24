@@ -35,6 +35,18 @@ readonly class CachemanWarmer {
 	private const WARM_QUEUE_MAX = 500;
 
 	/**
+	 * Header used to authenticate cache-warming requests at Cloudflare.
+	 */
+	private const WARM_TOKEN_HEADER = 'X-ZW-Cache-Warm-Token';
+
+	/**
+	 * Validated WAF token, or null when it is missing or invalid.
+	 *
+	 * @var string|null
+	 */
+	private ?string $waf_token;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanLogger $logger  The logger instance.
@@ -44,15 +56,26 @@ readonly class CachemanWarmer {
 		private CachemanLogger $logger,
 		private bool $enabled = false
 	) {
-		add_action( ZW_CACHEMAN_WARM_HOOK, $this->process_queue( ... ) );
+		$this->waf_token = self::configured_waf_token();
+
+		// Purge first (priority 10), then drain the warm queue.
+		add_action( ZW_CACHEMAN_CRON_HOOK, $this->process_queue( ... ), 20 );
 	}
 
 	/**
-	 * Queue the warmable page URLs from a set of purge items.
+	 * Whether a valid WAF token is configured in wp-config.php.
+	 */
+	public static function has_valid_waf_token(): bool {
+		return null !== self::configured_waf_token();
+	}
+
+	/**
+	 * Queue the warmable page URLs from a set of purge items. The queue is
+	 * drained in batches by the every-minute cron.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $items Purged items.
 	 */
-	public function schedule( array $items ): void {
+	public function enqueue( array $items ): void {
 		if ( ! $this->enabled ) {
 			return;
 		}
@@ -74,16 +97,13 @@ readonly class CachemanWarmer {
 		}
 
 		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
-
-		$this->schedule_run();
 	}
 
 	/**
-	 * Warm a bounded batch from the queue, rescheduling while items remain
-	 * (cron callback). Keeps each WP-Cron pass short instead of processing a
-	 * whole burst at once. Items are removed only after a successful warm, and
-	 * the queue is re-read before writing, so a crash mid-batch and URLs queued
-	 * concurrently are not lost.
+	 * Warm a bounded batch from the queue (cron callback). Keeps each WP-Cron
+	 * pass short instead of processing a whole burst at once. Items are removed
+	 * only after a successful warm, and the queue is re-read before writing, so
+	 * a crash mid-batch and URLs queued concurrently are not lost.
 	 */
 	public function process_queue(): void {
 		if ( ! $this->enabled ) {
@@ -104,31 +124,8 @@ readonly class CachemanWarmer {
 
 		// Re-read and drop only the URLs we warmed; anything enqueued in the
 		// meantime and any failed fetches stay queued for the next run.
-		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
-		if ( ! is_array( $queue ) ) {
-			$queue = [];
-		}
-		$queue = array_values( array_diff( $queue, $warmed ) );
+		$queue = array_values( array_diff( (array) get_option( ZW_CACHEMAN_WARM_QUEUE, [] ), $warmed ) );
 		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
-
-		if ( ! empty( $queue ) ) {
-			$this->schedule_run();
-		}
-	}
-
-	/**
-	 * Ensure a single drain event is scheduled.
-	 */
-	private function schedule_run(): void {
-		if ( wp_next_scheduled( ZW_CACHEMAN_WARM_HOOK ) ) {
-			return;
-		}
-
-		if ( wp_schedule_single_event( time(), ZW_CACHEMAN_WARM_HOOK ) ) {
-			$this->logger->debug( 'Warmer', 'Scheduled warm run' );
-		} else {
-			$this->logger->error( 'Warmer', 'Failed to schedule warm run' );
-		}
 	}
 
 	/**
@@ -143,18 +140,18 @@ readonly class CachemanWarmer {
 	 * @return bool Whether the URL can be dequeued.
 	 */
 	private function warm( string $url ): bool {
-		if ( '' === $url ) {
-			return true;
+		$headers = [ 'X-ZW-Cache-Warm' => '1' ];
+		if ( null !== $this->waf_token ) {
+			$headers[ self::WARM_TOKEN_HEADER ] = $this->waf_token;
 		}
 
 		$response = wp_remote_get(
 			$url,
 			[
-				'blocking'    => true,
 				'timeout'     => self::WARM_TIMEOUT_SECONDS,
 				'redirection' => 0,
 				'user-agent'  => 'ZWCacheMan-Warmer',
-				'headers'     => [ 'X-ZW-Cache-Warm' => '1' ],
+				'headers'     => $headers,
 			]
 		);
 
@@ -168,10 +165,31 @@ readonly class CachemanWarmer {
 	}
 
 	/**
+	 * Read and validate the cache-warming token from wp-config.php.
+	 *
+	 * Tokens are deliberately not stored in the WordPress database. A
+	 * 32-byte random value encoded as 64 hexadecimal characters is required.
+	 *
+	 * @return string|null Valid token, or null when missing or invalid.
+	 */
+	private static function configured_waf_token(): ?string {
+		if ( ! defined( 'ZW_CACHEMAN_WARM_TOKEN' ) ) {
+			return null;
+		}
+
+		$token = constant( 'ZW_CACHEMAN_WARM_TOKEN' );
+		if ( ! is_string( $token ) || 1 !== preg_match( '/\A[0-9a-f]{64}\z/i', $token ) ) {
+			return null;
+		}
+
+		return $token;
+	}
+
+	/**
 	 * Reduce purge items to warmable front-end page URLs.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $items Purge items.
-	 * @return array<string> Unique page URLs.
+	 * @return array<string> Page URLs.
 	 */
 	private function page_urls_from_items( array $items ): array {
 		// Match the REST base by path (from rest_url(), so it includes any
@@ -193,9 +211,9 @@ readonly class CachemanWarmer {
 				continue;
 			}
 
-			$urls[ $url ] = $url;
+			$urls[] = $url;
 		}
 
-		return array_values( $urls );
+		return $urls;
 	}
 }

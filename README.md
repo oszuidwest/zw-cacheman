@@ -12,7 +12,7 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 - **URL Prefix Purging**: Uses Cloudflare's prefix purging for archives, automatically clearing paginated pages (v1.1+)
 - **Taxonomy Term Handling**: Purges cache when taxonomy terms are created, edited, or deleted (v1.3+)
 - **SEO Sitemap Purging**: Purges Yoast SEO sitemaps — including the News and Video add-ons — when content changes, with filters to plug in other SEO plugins (v1.8+)
-- **Cache Warming (opt-in)**: After a successful purge, schedules a background WP-Cron refetch of the affected page URLs so the cache is repopulated without a visitor paying the render
+- **Cache Warming (opt-in)**: After a successful purge, queues the affected page URLs for a background WP-Cron refetch so the cache is repopulated without a visitor paying the render
 
 ## How It Works
 
@@ -180,8 +180,44 @@ Configure the plugin under Settings → ZuidWest Cache:
 - **API Key**: Cloudflare API key with cache purging permissions
 - **Batch Size**: URLs per batch (default: 30)
 - **Extra Domains**: Comma-separated list of additional domains to purge (e.g., app.example.com,www.example.com). URLs will be duplicated for these domains.
-- **Warm Cache After Purge**: When enabled, schedules a background WP-Cron refetch of purged page URLs (not prefix or REST API URLs), so the CDN/origin cache is repopulated by the server instead of by a visitor. Runs after a successful purge; timing follows WP-Cron. Off by default.
+- **Warm Cache After Purge**: When enabled, queues purged page URLs (not prefix or REST API URLs) for a background refetch, drained in small batches by the every-minute WP-Cron job, so the CDN/origin cache is repopulated by the server instead of by a visitor. Runs after a successful purge; timing follows WP-Cron. Off by default.
 - **Debug Mode**: Enable logging
+
+### Authenticated Cloudflare WAF exception
+
+Cache warming only populates the Cloudflare edge when the server reaches the site's public URL through Cloudflare. If a WAF rule or Super Bot Fight Mode blocks these requests, configure a private per-installation token before creating an exception. Never create a skip rule based only on the public `X-ZW-Cache-Warm: 1` header.
+
+Generate a 32-byte token:
+
+```bash
+openssl rand -hex 32
+```
+
+Provide it through the server environment and expose it to WordPress in `wp-config.php`:
+
+```php
+define(
+    'ZW_CACHEMAN_WARM_TOKEN',
+    getenv( 'ZW_CACHEMAN_WARM_TOKEN' ) ?: ''
+);
+```
+
+The token must contain exactly 64 hexadecimal characters. It is never stored in the WordPress database or displayed by the plugin; the settings page only reports whether a valid token is configured.
+
+After sending one warming request, identify the actual server egress IP and blocking rule in Cloudflare Security Events. Create the narrowest possible exception, for example:
+
+```text
+(
+  http.request.method eq "GET"
+  and ip.src in {203.0.113.10}
+  and any(
+    http.request.headers["x-zw-cache-warm-token"][*]
+      eq "<private-64-character-token>"
+  )
+)
+```
+
+Replace the example IP and token with the server's dedicated static egress IP and configured token. Keep match logging enabled and skip only the specific managed rule that caused the false positive, or only Super Bot Fight Mode when applicable. Do not skip all custom rules, all managed rules, or rate limiting. Do not use an IP-based exception with a shared or dynamic egress IP. Cloudflare Bot Fight Mode cannot be skipped with a custom WAF rule.
 
 ## Developer Filters
 
