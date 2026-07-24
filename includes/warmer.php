@@ -22,6 +22,12 @@ readonly class CachemanWarmer {
 	private const WARM_TIMEOUT_SECONDS = 15;
 
 	/**
+	 * Spacing, in seconds, between warm events so a burst does not run
+	 * back-to-back in a single WP-Cron pass.
+	 */
+	private const WARM_STAGGER_SECONDS = 15;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanLogger $logger  The logger instance.
@@ -45,12 +51,17 @@ readonly class CachemanWarmer {
 		}
 
 		// One event per URL, so repeats (e.g. the homepage after a burst of
-		// publishes) de-duplicate within WP-Cron's 10-minute window.
+		// publishes) de-duplicate within WP-Cron's window. Events are staggered
+		// so a large batch does not run back-to-back in a single cron pass and
+		// tie up the worker.
+		$offset = 0;
 		foreach ( $this->page_urls_from_items( $items ) as $url ) {
-			if ( ! wp_next_scheduled( ZW_CACHEMAN_WARM_HOOK, [ $url ] ) ) {
-				wp_schedule_single_event( time(), ZW_CACHEMAN_WARM_HOOK, [ $url ] );
-				$this->logger->debug( 'Warmer', 'Scheduled warming of ' . $url );
+			if ( wp_next_scheduled( ZW_CACHEMAN_WARM_HOOK, [ $url ] ) ) {
+				continue;
 			}
+			wp_schedule_single_event( time() + $offset, ZW_CACHEMAN_WARM_HOOK, [ $url ] );
+			$this->logger->debug( 'Warmer', 'Scheduled warming of ' . $url );
+			$offset += self::WARM_STAGGER_SECONDS;
 		}
 	}
 
@@ -89,9 +100,11 @@ readonly class CachemanWarmer {
 	 * @return array<string> Unique page URLs.
 	 */
 	private function page_urls_from_items( array $items ): array {
-		// Match the REST base by path, so REST URLs on extra domains (different
-		// host, same "/wp-json/" path) are excluded too.
-		$rest_path = '/' . trim( rest_get_url_prefix(), '/' ) . '/';
+		// Match the REST base by path (from rest_url(), so it includes any
+		// subdirectory install path) and compare host-agnostically, so REST
+		// URLs on extra domains are excluded too. Guard the plain-permalink
+		// case where the REST path is just "/".
+		$rest_path = (string) wp_parse_url( rest_url(), PHP_URL_PATH );
 		$urls      = [];
 
 		foreach ( $items as $item ) {
@@ -102,7 +115,7 @@ readonly class CachemanWarmer {
 			$url  = $item['url'];
 			$path = (string) wp_parse_url( $url, PHP_URL_PATH );
 
-			if ( str_starts_with( $path, $rest_path ) ) {
+			if ( '/' !== $rest_path && str_starts_with( $path, $rest_path ) ) {
 				continue;
 			}
 
