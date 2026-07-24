@@ -28,6 +28,13 @@ readonly class CachemanWarmer {
 	private const WARM_BATCH_SIZE = 5;
 
 	/**
+	 * Maximum number of URLs held in the queue. Backpressure so the option
+	 * cannot grow without bound if warming falls behind; the oldest entries
+	 * are dropped once the cap is reached.
+	 */
+	private const WARM_QUEUE_MAX = 500;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanLogger $logger  The logger instance.
@@ -60,6 +67,12 @@ readonly class CachemanWarmer {
 			$queue = [];
 		}
 		$queue = array_values( array_unique( array_merge( $queue, $urls ) ) );
+
+		if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
+			$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
+			$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
+		}
+
 		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
 
 		$this->schedule_run();
@@ -68,7 +81,9 @@ readonly class CachemanWarmer {
 	/**
 	 * Warm a bounded batch from the queue, rescheduling while items remain
 	 * (cron callback). Keeps each WP-Cron pass short instead of processing a
-	 * whole burst at once.
+	 * whole burst at once. Items are removed only after a successful warm, and
+	 * the queue is re-read before writing, so a crash mid-batch and URLs queued
+	 * concurrently are not lost.
 	 */
 	public function process_queue(): void {
 		if ( ! $this->enabled ) {
@@ -80,15 +95,23 @@ readonly class CachemanWarmer {
 			return;
 		}
 
-		$batch     = array_slice( $queue, 0, self::WARM_BATCH_SIZE );
-		$remaining = array_slice( $queue, self::WARM_BATCH_SIZE );
-		update_option( ZW_CACHEMAN_WARM_QUEUE, $remaining, false );
-
-		foreach ( $batch as $url ) {
-			$this->warm( $url );
+		$warmed = [];
+		foreach ( array_slice( $queue, 0, self::WARM_BATCH_SIZE ) as $url ) {
+			if ( $this->warm( $url ) ) {
+				$warmed[] = $url;
+			}
 		}
 
-		if ( ! empty( $remaining ) ) {
+		// Re-read and drop only the URLs we warmed; anything enqueued in the
+		// meantime and any failed fetches stay queued for the next run.
+		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
+		if ( ! is_array( $queue ) ) {
+			$queue = [];
+		}
+		$queue = array_values( array_diff( $queue, $warmed ) );
+		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
+
+		if ( ! empty( $queue ) ) {
 			$this->schedule_run();
 		}
 	}
@@ -111,11 +134,17 @@ readonly class CachemanWarmer {
 	/**
 	 * Warm a single URL by fetching it.
 	 *
+	 * Returns false only on a transport error (WP_Error), so the URL stays
+	 * queued for a retry. Any HTTP response — including 4xx/5xx — is treated as
+	 * terminal (the URL is dequeued) to avoid retrying a permanently missing
+	 * page forever.
+	 *
 	 * @param string $url URL to warm.
+	 * @return bool Whether the URL can be dequeued.
 	 */
-	private function warm( string $url ): void {
+	private function warm( string $url ): bool {
 		if ( '' === $url ) {
-			return;
+			return true;
 		}
 
 		$response = wp_remote_get(
@@ -131,9 +160,11 @@ readonly class CachemanWarmer {
 
 		if ( is_wp_error( $response ) ) {
 			$this->logger->error( 'Warmer', 'Failed to warm ' . $url . ': ' . $response->get_error_message() );
-		} else {
-			$this->logger->debug( 'Warmer', 'Warmed ' . $url . ' (HTTP ' . wp_remote_retrieve_response_code( $response ) . ')' );
+			return false;
 		}
+
+		$this->logger->debug( 'Warmer', 'Warmed ' . $url . ' (HTTP ' . wp_remote_retrieve_response_code( $response ) . ')' );
+		return true;
 	}
 
 	/**
