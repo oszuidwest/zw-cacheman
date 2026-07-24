@@ -246,9 +246,12 @@ readonly class CachemanAdmin {
 		}
 
 		printf(
-			'<p class="description">%s <code>ZW_CACHEMAN_WARM_TOKEN</code> %s</p>',
-			esc_html__( 'Define', 'zw-cacheman' ),
-			esc_html__( 'in wp-config.php as exactly 64 hexadecimal characters to authenticate Cloudflare WAF exceptions.', 'zw-cacheman' )
+			'<p class="description">%s</p>',
+			sprintf(
+				/* translators: %s: the ZW_CACHEMAN_WARM_TOKEN constant name */
+				esc_html__( 'Define %s in wp-config.php as exactly 64 hexadecimal characters to authenticate Cloudflare WAF exceptions.', 'zw-cacheman' ),
+				'<code>ZW_CACHEMAN_WARM_TOKEN</code>'
+			)
 		);
 	}
 

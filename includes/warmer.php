@@ -40,13 +40,6 @@ readonly class CachemanWarmer {
 	private const WARM_TOKEN_HEADER = 'X-ZW-Cache-Warm-Token';
 
 	/**
-	 * Validated WAF token, or null when it is missing or invalid.
-	 *
-	 * @var string|null
-	 */
-	private ?string $waf_token;
-
-	/**
 	 * Constructor
 	 *
 	 * @param CachemanLogger $logger  The logger instance.
@@ -54,12 +47,8 @@ readonly class CachemanWarmer {
 	 */
 	public function __construct(
 		private CachemanLogger $logger,
-		private bool $enabled = false
+		private bool $enabled
 	) {
-		$this->waf_token = self::configured_waf_token();
-
-		// Purge first (priority 10), then drain the warm queue.
-		add_action( ZW_CACHEMAN_CRON_HOOK, $this->process_queue( ... ), 20 );
 	}
 
 	/**
@@ -85,11 +74,7 @@ readonly class CachemanWarmer {
 			return;
 		}
 
-		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
-		if ( ! is_array( $queue ) ) {
-			$queue = [];
-		}
-		$queue = array_values( array_unique( array_merge( $queue, $urls ) ) );
+		$queue = array_values( array_unique( array_merge( $this->read_queue(), $urls ) ) );
 
 		if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
 			$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
@@ -100,18 +85,24 @@ readonly class CachemanWarmer {
 	}
 
 	/**
-	 * Warm a bounded batch from the queue (cron callback). Keeps each WP-Cron
-	 * pass short instead of processing a whole burst at once. Items are removed
-	 * only after a successful warm, and the queue is re-read before writing, so
-	 * a crash mid-batch and URLs queued concurrently are not lost.
+	 * Warm a bounded batch from the queue. Called by the manager after each
+	 * purge pass. Keeps each WP-Cron pass short instead of processing a whole
+	 * burst at once. Items are removed only after a successful warm, and the
+	 * queue is re-read before writing, so a crash mid-batch does not lose
+	 * failed URLs and (with a persistent object cache) concurrently queued
+	 * URLs are preserved.
 	 */
 	public function process_queue(): void {
 		if ( ! $this->enabled ) {
+			// Warming was turned off; drop any URLs still parked in the queue.
+			if ( [] !== $this->read_queue() ) {
+				delete_option( ZW_CACHEMAN_WARM_QUEUE );
+			}
 			return;
 		}
 
-		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
-		if ( ! is_array( $queue ) || empty( $queue ) ) {
+		$queue = $this->read_queue();
+		if ( empty( $queue ) ) {
 			return;
 		}
 
@@ -122,9 +113,9 @@ readonly class CachemanWarmer {
 			}
 		}
 
-		// Re-read and drop only the URLs we warmed; anything enqueued in the
-		// meantime and any failed fetches stay queued for the next run.
-		$queue = array_values( array_diff( (array) get_option( ZW_CACHEMAN_WARM_QUEUE, [] ), $warmed ) );
+		// Re-read and drop only the URLs we warmed; failed fetches stay
+		// queued for the next run.
+		$queue = array_values( array_diff( $this->read_queue(), $warmed ) );
 		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
 	}
 
@@ -140,9 +131,10 @@ readonly class CachemanWarmer {
 	 * @return bool Whether the URL can be dequeued.
 	 */
 	private function warm( string $url ): bool {
-		$headers = [ 'X-ZW-Cache-Warm' => '1' ];
-		if ( null !== $this->waf_token ) {
-			$headers[ self::WARM_TOKEN_HEADER ] = $this->waf_token;
+		$headers = [];
+		$token   = self::configured_waf_token();
+		if ( null !== $token ) {
+			$headers[ self::WARM_TOKEN_HEADER ] = $token;
 		}
 
 		$response = wp_remote_get(
@@ -162,6 +154,16 @@ readonly class CachemanWarmer {
 
 		$this->logger->debug( 'Warmer', 'Warmed ' . $url . ' (HTTP ' . wp_remote_retrieve_response_code( $response ) . ')' );
 		return true;
+	}
+
+	/**
+	 * Read the warm queue option, normalizing a corrupt value to an empty list.
+	 *
+	 * @return array<string> Queued URLs.
+	 */
+	private function read_queue(): array {
+		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
+		return is_array( $queue ) ? $queue : [];
 	}
 
 	/**

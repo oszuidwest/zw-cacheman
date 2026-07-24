@@ -185,7 +185,7 @@ Configure the plugin under Settings → ZuidWest Cache:
 
 ### Authenticated Cloudflare WAF exception
 
-Cache warming only populates the Cloudflare edge when the server reaches the site's public URL through Cloudflare. If a WAF rule or Super Bot Fight Mode blocks these requests, configure a private per-installation token before creating an exception. Never create a skip rule based only on the public `X-ZW-Cache-Warm: 1` header.
+Cache warming only populates the Cloudflare edge when the server reaches the site's public URL through Cloudflare. If a WAF rule or Super Bot Fight Mode blocks these requests, configure a private per-installation token before creating an exception. Never create a skip rule based only on the `ZWCacheMan-Warmer` user agent — it is trivially spoofable.
 
 Generate a 32-byte token:
 
