@@ -175,13 +175,31 @@ Without URL prefix purging, you would need to individually purge each pagination
 4. Activate the plugin after installation completes
 
 ### Configuration
+
 Configure the plugin under Settings → ZuidWest Cache:
+
 - **Zone ID**: Cloudflare Zone ID
 - **API Key**: Cloudflare API key with cache purging permissions
 - **Batch Size**: URLs per batch (default: 30)
 - **Extra Domains**: Comma-separated list of additional domains to purge (e.g., app.example.com,www.example.com). URLs will be duplicated for these domains.
-- **Warm Cache After Purge**: When enabled, queues purged page URLs (not prefix or REST API URLs) for a background refetch, drained in small batches by the every-minute WP-Cron job, so the CDN/origin cache is repopulated by the server instead of by a visitor. Runs after a successful purge; timing follows WP-Cron. Off by default.
+- **Warm Cache After Purge**: When enabled, queues eligible exact-URL purges for a background refetch, so the CDN/origin cache is repopulated by the server instead of by a visitor. See [Cache warming selection](#cache-warming-selection) for the exact rules. Off by default.
 - **Debug Mode**: Enable logging
+
+### Cache warming selection
+
+Cache warming is event-driven and does not crawl the whole site. After a successful Cloudflare purge, the warmer queues every purge item of type `File` except URLs under the WordPress REST API path. This includes exact URLs such as:
+
+- Post and page permalinks, the home page, and archive landing pages when they are also emitted as a `File` purge
+- Site, post-comment, term, and author feeds
+- Exact sitemap URLs such as `sitemap_index.xml` and the first page of a post-type, taxonomy, author, news, or video sitemap
+- Eligible copies of these URLs for any configured extra domains
+
+The warmer does not queue:
+
+- `Prefix` purge items. A prefix purge may invalidate an entire archive and its pagination, but the warmer only fetches an archive landing page when that URL is also present as a separate `File` item; it does not fetch `/page/2/` and later pages.
+- WordPress REST API URLs
+
+Eligible URLs are deduplicated in a queue capped at 500 entries. The every-minute WP-Cron job processes at most five warming requests per run, after purge processing. Each request is an unauthenticated public `GET` unless a valid WAF warm token is configured. Transport failures remain queued for a retry; any HTTP response, including `4xx` or `5xx`, is considered terminal and removed from the queue. Actual timing depends on WP-Cron traffic.
 
 ### Authenticated Cloudflare WAF exception
 
