@@ -12,6 +12,7 @@ A WordPress plugin for efficient Cloudflare cache management. Immediately purges
 - **URL Prefix Purging**: Uses Cloudflare's prefix purging for archives, automatically clearing paginated pages (v1.1+)
 - **Taxonomy Term Handling**: Purges cache when taxonomy terms are created, edited, or deleted (v1.3+)
 - **SEO Sitemap Purging**: Purges Yoast SEO sitemaps — including the News and Video add-ons — when content changes, with filters to plug in other SEO plugins (v1.8+)
+- **Cache Warming (opt-in)**: After a purge, re-fetches the affected page URLs in a background cron event so the cache is repopulated before the next visitor arrives
 
 ## How It Works
 
@@ -179,6 +180,7 @@ Configure the plugin under Settings → ZuidWest Cache:
 - **API Key**: Cloudflare API key with cache purging permissions
 - **Batch Size**: URLs per batch (default: 30)
 - **Extra Domains**: Comma-separated list of additional domains to purge (e.g., app.example.com,www.example.com). URLs will be duplicated for these domains.
+- **Warm Cache After Purge**: When enabled, re-fetches purged page URLs (not prefix or REST API URLs) in a background cron event, so the CDN/origin cache is repopulated before the next visitor hits a cold page. Off by default.
 - **Debug Mode**: Enable logging
 
 ## Developer Filters

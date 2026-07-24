@@ -19,14 +19,15 @@ readonly class CachemanAdmin {
 	/**
 	 * Default settings
 	 *
-	 * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string}
+	 * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string, enable_warming: bool}
 	 */
 	public const array DEFAULT_SETTINGS = [
-		'zone_id'       => '',
-		'api_key'       => '',
-		'batch_size'    => 30,
-		'debug_mode'    => false,
-		'extra_domains' => '',
+		'zone_id'        => '',
+		'api_key'        => '',
+		'batch_size'     => 30,
+		'debug_mode'     => false,
+		'extra_domains'  => '',
+		'enable_warming' => false,
 	];
 
 	/**
@@ -150,6 +151,18 @@ readonly class CachemanAdmin {
 		);
 
 		add_settings_field(
+			'enable_warming',
+			__( 'Warm Cache After Purge', 'zw-cacheman' ),
+			$this->render_field( ... ),
+			'zw_cacheman_settings',
+			'zw_cacheman_main_section',
+			[
+				'name' => 'enable_warming',
+				'type' => 'checkbox',
+			]
+		);
+
+		add_settings_field(
 			'debug_mode',
 			__( 'Debug Mode', 'zw-cacheman' ),
 			$this->render_field( ... ),
@@ -215,7 +228,7 @@ readonly class CachemanAdmin {
 	 * Sanitize settings
 	 *
 	 * @param array<string, mixed> $input Raw input values.
-	 * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string} Sanitized values.
+	 * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string, enable_warming: bool} Sanitized values.
 	 */
 	public function sanitize_settings( array $input ): array {
 		$sanitized    = [];
@@ -239,8 +252,9 @@ readonly class CachemanAdmin {
 			);
 		}
 
-		// Sanitize checkbox to boolean.
-		$sanitized['debug_mode'] = isset( $input['debug_mode'] ) ? true : false;
+		// Sanitize checkboxes to boolean.
+		$sanitized['debug_mode']     = isset( $input['debug_mode'] );
+		$sanitized['enable_warming'] = isset( $input['enable_warming'] );
 
 		// Sanitize extra domains and validate each as a hostname.
 		$extra_domains_input = isset( $input['extra_domains'] ) ? sanitize_text_field( $input['extra_domains'] ) : '';

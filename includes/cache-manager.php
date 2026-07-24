@@ -19,14 +19,16 @@ readonly class CachemanManager {
 	/**
 	 * Constructor
 	 *
-	 * @param CachemanAPI       $api       The API handler instance.
+	 * @param CachemanAPI       $api        The API handler instance.
 	 * @param CachemanUrlDelver $url_delver The URL delver instance.
 	 * @param CachemanLogger    $logger     The logger instance.
+	 * @param CachemanWarmer    $warmer     The cache warmer instance.
 	 */
 	public function __construct(
 		private CachemanAPI $api,
 		private CachemanUrlDelver $url_delver,
-		private CachemanLogger $logger
+		private CachemanLogger $logger,
+		private CachemanWarmer $warmer
 	) {
 		// Hook into post status transitions.
 		add_action( 'transition_post_status', $this->handle_post_status_change( ... ), 10, 3 );
@@ -201,7 +203,9 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items ) . ' ' . $description );
 
-		if ( ! $this->api->process_purge_items( $items ) ) {
+		if ( $this->api->process_purge_items( $items ) ) {
+			$this->warmer->schedule( $items );
+		} else {
 			$this->logger->error( 'Manager', 'Failed to process ' . $description );
 			$this->queue_purge_items( $items );
 		}
@@ -273,6 +277,7 @@ readonly class CachemanManager {
 			// Update the queue with remaining items (autoload disabled for performance).
 			update_option( ZW_CACHEMAN_QUEUE, $remaining_items, false );
 			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $remaining_items ) . ' items remaining in queue.' );
+			$this->warmer->schedule( $items_to_process );
 		} else {
 			$this->logger->error( 'Manager', 'Failed to process batch of ' . count( $items_to_process ) . ' items. Will retry next run.' );
 		}

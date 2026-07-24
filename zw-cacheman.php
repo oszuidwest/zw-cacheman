@@ -24,6 +24,7 @@ define( 'ZW_CACHEMAN_URL', plugin_dir_url( __FILE__ ) );
 define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
+define( 'ZW_CACHEMAN_WARM_HOOK', 'zw_cacheman_warm_hook' );
 
 // Includes required files.
 require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
@@ -34,6 +35,7 @@ require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider.php';
 require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-yoast.php';
 require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-factory.php';
 require_once ZW_CACHEMAN_DIR . 'includes/url-delver.php';
+require_once ZW_CACHEMAN_DIR . 'includes/warmer.php';
 require_once ZW_CACHEMAN_DIR . 'includes/cache-manager.php';
 require_once ZW_CACHEMAN_DIR . 'includes/admin.php';
 
@@ -53,7 +55,8 @@ function zw_cacheman_init() {
 
 	$sitemap_provider = ZW_CACHEMAN_Core\CachemanSitemapProviderFactory::detect( $logger );
 	$url_delver       = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger, $sitemap_provider );
-	$manager          = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger );
+	$warmer           = new ZW_CACHEMAN_Core\CachemanWarmer( $logger, ! empty( $settings['enable_warming'] ) );
+	$manager          = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger, $warmer );
 
 	// Only load admin interface in admin area.
 	if ( is_admin() ) {
@@ -98,6 +101,10 @@ function zw_cacheman_deactivate() {
 	if ( $timestamp ) {
 		wp_unschedule_event( $timestamp, ZW_CACHEMAN_CRON_HOOK );
 	}
+
+	// Clear pending one-off warming events. wp_unschedule_hook() clears them
+	// regardless of their per-URL args (wp_clear_scheduled_hook() would not).
+	wp_unschedule_hook( ZW_CACHEMAN_WARM_HOOK );
 }
 register_deactivation_hook( __FILE__, 'zw_cacheman_deactivate' );
 
