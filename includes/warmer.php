@@ -78,7 +78,10 @@ readonly class CachemanWarmer {
 
 		if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
 			$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
-			$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
+			if ( false === get_transient( 'zw_cacheman_warm_queue_overflow' ) ) {
+				$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
+				set_transient( 'zw_cacheman_warm_queue_overflow', true, 5 * MINUTE_IN_SECONDS );
+			}
 		}
 
 		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
