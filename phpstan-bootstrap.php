@@ -16,5 +16,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'ZW_CACHEMAN_DIR', __DIR__ . '/' );
 define( 'ZW_CACHEMAN_URL', 'https://example.com/wp-content/plugins/zw-cacheman/' );
 define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
+define( 'ZW_CACHEMAN_QUEUE_LOCK', 'zw_cacheman_queue_lock' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_process_queue' );

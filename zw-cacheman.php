@@ -22,6 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'ZW_CACHEMAN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ZW_CACHEMAN_URL', plugin_dir_url( __FILE__ ) );
 define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
+define( 'ZW_CACHEMAN_QUEUE_LOCK', 'zw_cacheman_queue_lock' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
 define( 'ZW_CACHEMAN_WARM_QUEUE', 'zw_cacheman_warm_queue' );
@@ -114,6 +115,7 @@ function zw_cacheman_uninstall() {
 	// Clean up all plugin data.
 	delete_option( ZW_CACHEMAN_SETTINGS );
 	delete_option( ZW_CACHEMAN_QUEUE );
+	delete_option( ZW_CACHEMAN_QUEUE_LOCK );
 	delete_option( ZW_CACHEMAN_WARM_QUEUE );
 	delete_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW );
 

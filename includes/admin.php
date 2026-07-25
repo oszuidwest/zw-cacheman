@@ -147,6 +147,8 @@ readonly class CachemanAdmin {
 				'name'    => 'batch_size',
 				'type'    => 'number',
 				'default' => 30,
+				'min'     => 1,
+				'max'     => CachemanAPI::PREFIX_BATCH_SIZE,
 			]
 		);
 
@@ -198,7 +200,7 @@ readonly class CachemanAdmin {
 	/**
 	 * Render settings field
 	 *
-	 * @param array{name: string, type: string, default?: mixed} $args Field arguments.
+	 * @param array{name: string, type: string, default?: mixed, min?: int, max?: int} $args Field arguments.
 	 */
 	public function render_field( array $args ): void {
 		$settings = get_option( ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS );
@@ -215,11 +217,13 @@ readonly class CachemanAdmin {
 				esc_attr( $value )
 			),
 			'number' => printf(
-				'<input type="number" id="%s" name="%s[%s]" value="%s" class="regular-text" />',
+				'<input type="number" id="%s" name="%s[%s]" value="%s" min="%s" max="%s" class="regular-text" />',
 				esc_attr( $name ),
 				esc_attr( ZW_CACHEMAN_SETTINGS ),
 				esc_attr( $name ),
-				esc_attr( $value )
+				esc_attr( $value ),
+				esc_attr( (string) ( $args['min'] ?? 1 ) ),
+				esc_attr( (string) ( $args['max'] ?? '' ) )
 			),
 			'checkbox' => printf(
 				'<input type="checkbox" id="%s" name="%s[%s]" value="1" %s />',
@@ -271,14 +275,19 @@ readonly class CachemanAdmin {
 			? sanitize_text_field( $input['api_key'] )
 			: $old_settings['api_key']; // Keep old API key if empty (to prevent accidental clear).
 
-		// Sanitize numeric fields.
+		// Sanitize numeric fields. Capped at PREFIX_BATCH_SIZE so one cron
+		// pass sends at most one files and one prefixes request to Cloudflare.
 		$sanitized['batch_size'] = isset( $input['batch_size'] ) ? intval( $input['batch_size'] ) : 30;
-		if ( $sanitized['batch_size'] < 1 ) {
+		if ( $sanitized['batch_size'] < 1 || $sanitized['batch_size'] > CachemanAPI::PREFIX_BATCH_SIZE ) {
 			$sanitized['batch_size'] = 30;
 			add_settings_error(
 				'zw_cacheman_settings',
 				'invalid_batch_size',
-				__( 'Batch size must be at least 1. Reset to default (30).', 'zw-cacheman' ),
+				sprintf(
+					/* translators: %d: maximum allowed batch size */
+					__( 'Batch size must be between 1 and %d. Reset to default (30).', 'zw-cacheman' ),
+					CachemanAPI::PREFIX_BATCH_SIZE
+				),
 				'error'
 			);
 		}
@@ -677,11 +686,13 @@ readonly class CachemanAdmin {
 
 			case 'clear_queue':
 				check_admin_referer( 'zw_cacheman_clear_queue', 'zw_cacheman_queue_nonce' );
-				$queue       = get_option( ZW_CACHEMAN_QUEUE, [] );
-				$queue_count = count( $queue );
-				$this->logger->debug( 'Admin', 'Manually cleared queue with ' . $queue_count . ' items' );
-				delete_option( ZW_CACHEMAN_QUEUE );
-				$redirect_args = [ 'zw_message' => 'queue_cleared' ];
+				$queue_count = $this->manager->clear_purge_queue();
+				if ( null === $queue_count ) {
+					$redirect_args = [ 'zw_message' => 'queue_clear_failed' ];
+				} else {
+					$this->logger->debug( 'Admin', 'Manually cleared queue with ' . $queue_count . ' items' );
+					$redirect_args = [ 'zw_message' => 'queue_cleared' ];
+				}
 				break;
 
 			case 'clear_logs':
@@ -723,6 +734,7 @@ readonly class CachemanAdmin {
 
 			$notices = [
 				'queue_cleared'       => [ 'success', __( 'Cache queue has been cleared.', 'zw-cacheman' ) ],
+				'queue_clear_failed'  => [ 'error', __( 'Cache queue could not be cleared. Please try again.', 'zw-cacheman' ) ],
 				'connection_success'  => [ 'success', __( 'Cloudflare API connection successful!', 'zw-cacheman' ) . ' ' . $details ],
 				'connection_error'    => [ 'error', __( 'Cloudflare API connection failed: ', 'zw-cacheman' ) . $details ],
 				'missing_credentials' => [ 'error', __( 'Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman' ) ],
