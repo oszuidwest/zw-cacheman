@@ -686,11 +686,13 @@ readonly class CachemanAdmin {
 
 			case 'clear_queue':
 				check_admin_referer( 'zw_cacheman_clear_queue', 'zw_cacheman_queue_nonce' );
-				$queue       = get_option( ZW_CACHEMAN_QUEUE, [] );
-				$queue_count = count( $queue );
-				$this->logger->debug( 'Admin', 'Manually cleared queue with ' . $queue_count . ' items' );
-				delete_option( ZW_CACHEMAN_QUEUE );
-				$redirect_args = [ 'zw_message' => 'queue_cleared' ];
+				$queue_count = $this->manager->clear_purge_queue();
+				if ( null === $queue_count ) {
+					$redirect_args = [ 'zw_message' => 'queue_clear_failed' ];
+				} else {
+					$this->logger->debug( 'Admin', 'Manually cleared queue with ' . $queue_count . ' items' );
+					$redirect_args = [ 'zw_message' => 'queue_cleared' ];
+				}
 				break;
 
 			case 'clear_logs':
@@ -732,6 +734,7 @@ readonly class CachemanAdmin {
 
 			$notices = [
 				'queue_cleared'       => [ 'success', __( 'Cache queue has been cleared.', 'zw-cacheman' ) ],
+				'queue_clear_failed'  => [ 'error', __( 'Cache queue could not be cleared. Please try again.', 'zw-cacheman' ) ],
 				'connection_success'  => [ 'success', __( 'Cloudflare API connection successful!', 'zw-cacheman' ) . ' ' . $details ],
 				'connection_error'    => [ 'error', __( 'Cloudflare API connection failed: ', 'zw-cacheman' ) . $details ],
 				'missing_credentials' => [ 'error', __( 'Please enter both Zone ID and API Key to test the connection.', 'zw-cacheman' ) ],

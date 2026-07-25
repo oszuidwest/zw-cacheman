@@ -17,6 +17,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 readonly class CachemanManager {
 
 	/**
+	 * Maximum time spent waiting to mutate the purge queue.
+	 */
+	private const float QUEUE_LOCK_WAIT_SECONDS = 31.0;
+
+	/**
+	 * Time after which an abandoned purge queue lock may be taken over.
+	 */
+	private const float QUEUE_LOCK_TTL_SECONDS = 30.0;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanAPI       $api        The API handler instance.
@@ -248,17 +258,138 @@ readonly class CachemanManager {
 	}
 
 	/**
+	 * Invalidate one option in every cache used by get_option().
+	 *
+	 * @param string $option Option name.
+	 */
+	private static function invalidate_option_cache( string $option ): void {
+		wp_cache_delete( $option, 'options' );
+
+		foreach ( [ 'alloptions', 'notoptions' ] as $cache_key ) {
+			$cached_options = wp_cache_get( $cache_key, 'options' );
+			if ( is_array( $cached_options ) && isset( $cached_options[ $option ] ) ) {
+				unset( $cached_options[ $option ] );
+				wp_cache_set( $cache_key, $cached_options, 'options' );
+			}
+		}
+	}
+
+	/**
+	 * Read the current purge queue, bypassing any request-local snapshot.
+	 *
+	 * @return array<array{type: PurgeType, url: string}>
+	 */
+	private static function get_current_purge_queue(): array {
+		self::invalidate_option_cache( ZW_CACHEMAN_QUEUE );
+		$queue = get_option( ZW_CACHEMAN_QUEUE, [] );
+
+		return is_array( $queue ) ? $queue : [];
+	}
+
+	/**
+	 * Acquire the shared purge queue mutation lock.
+	 *
+	 * An INSERT IGNORE provides the atomic insert. The conditional database
+	 * update only recovers locks abandoned by a terminated request.
+	 *
+	 * @return string|null The owned lock value, or null when acquisition timed out.
+	 */
+	private function acquire_purge_queue_lock(): ?string {
+		global $wpdb;
+
+		$deadline = microtime( true ) + self::QUEUE_LOCK_WAIT_SECONDS;
+
+		do {
+			$lock_value = sprintf(
+				'%.6F:%s',
+				microtime( true ) + self::QUEUE_LOCK_TTL_SECONDS,
+				wp_generate_uuid4()
+			);
+
+			$inserted = $wpdb->query(
+				$wpdb->prepare(
+					'INSERT IGNORE INTO %i (option_name, option_value, autoload) VALUES (%s, %s, %s)',
+					$wpdb->options,
+					ZW_CACHEMAN_QUEUE_LOCK,
+					$lock_value,
+					'off'
+				)
+			);
+
+			if ( 1 === $inserted ) {
+				self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
+				return $lock_value;
+			}
+
+			$stored_lock = $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT option_value FROM %i WHERE option_name = %s',
+					$wpdb->options,
+					ZW_CACHEMAN_QUEUE_LOCK
+				)
+			);
+
+			if ( ! is_string( $stored_lock ) ) {
+				self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
+				usleep( 10_000 );
+				continue;
+			}
+
+			$expires_at = (float) strstr( $stored_lock, ':', true );
+			if ( $expires_at <= microtime( true ) ) {
+				$updated = $wpdb->query(
+					$wpdb->prepare(
+						'UPDATE %i SET option_value = %s WHERE option_name = %s AND option_value = %s',
+						$wpdb->options,
+						$lock_value,
+						ZW_CACHEMAN_QUEUE_LOCK,
+						$stored_lock
+					)
+				);
+
+				if ( 1 === $updated ) {
+					self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
+					return $lock_value;
+				}
+			}
+
+			usleep( 10_000 );
+		} while ( microtime( true ) < $deadline );
+
+		return null;
+	}
+
+	/**
+	 * Release the purge queue mutation lock when it is still owned.
+	 *
+	 * @param string $lock_value Value returned by acquire_purge_queue_lock().
+	 */
+	private function release_purge_queue_lock( string $lock_value ): void {
+		global $wpdb;
+
+		$deleted = $wpdb->query(
+			$wpdb->prepare(
+				'DELETE FROM %i WHERE option_name = %s AND option_value = %s',
+				$wpdb->options,
+				ZW_CACHEMAN_QUEUE_LOCK,
+				$lock_value
+			)
+		);
+
+		if ( 1 === $deleted ) {
+			self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
+			return;
+		}
+
+		$this->logger->error( 'Manager', 'Purge queue mutation lock expired before it could be released.' );
+	}
+
+	/**
 	 * Queue purge items for later processing.
 	 *
-	 * Read-modify-write on a plain option: two producers saving in the same
-	 * instant can read the same snapshot, and the last writer wins (the
-	 * other save's items are lost). This is accepted: the window is the few
-	 * milliseconds between the read and the write below (no network I/O in
-	 * between), so it takes two saves in the same instant to hit it. Closing
-	 * it would require a lock or a real job store, which this plugin
-	 * deliberately avoids. The consumer-side race is the dangerous one
-	 * (its window spans the Cloudflare calls) and is closed in
-	 * process_purge_queue() by re-reading the queue after those calls.
+	 * Every queue read-modify-write operation uses the same short-lived lock,
+	 * preventing producers, consumers, and admin clears from overwriting each
+	 * other's changes.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $purge_items Items to add to the queue.
 	 */
@@ -267,34 +398,67 @@ readonly class CachemanManager {
 			return;
 		}
 
-		$existing_items = get_option( ZW_CACHEMAN_QUEUE, [] );
-
-		// Combine and deduplicate based on URL and type.
-		$all_items   = [];
-		$unique_keys = [];
-
-		// Process existing items first.
-		foreach ( $existing_items as $item ) {
-			$key = self::item_key( $item );
-			if ( ! isset( $unique_keys[ $key ] ) ) {
-				$unique_keys[ $key ] = true;
-				$all_items[]         = $item;
-			}
+		$lock_value = $this->acquire_purge_queue_lock();
+		if ( null === $lock_value ) {
+			$this->logger->error( 'Manager', 'Could not acquire purge queue lock; items were not queued.' );
+			return;
 		}
 
-		// Add new items if not already in queue.
-		foreach ( $purge_items as $item ) {
-			$key = self::item_key( $item );
-			if ( ! isset( $unique_keys[ $key ] ) ) {
-				$unique_keys[ $key ] = true;
-				$all_items[]         = $item;
+		try {
+			$existing_items = self::get_current_purge_queue();
+
+			// Combine and deduplicate based on URL and type.
+			$all_items   = [];
+			$unique_keys = [];
+
+			// Process existing items first.
+			foreach ( $existing_items as $item ) {
+				$key = self::item_key( $item );
+				if ( ! isset( $unique_keys[ $key ] ) ) {
+					$unique_keys[ $key ] = true;
+					$all_items[]         = $item;
+				}
 			}
+
+			// Add new items if not already in queue.
+			foreach ( $purge_items as $item ) {
+				$key = self::item_key( $item );
+				if ( ! isset( $unique_keys[ $key ] ) ) {
+					$unique_keys[ $key ] = true;
+					$all_items[]         = $item;
+				}
+			}
+
+			$added_count = count( $all_items ) - count( $existing_items );
+			update_option( ZW_CACHEMAN_QUEUE, $all_items, false );
+		} finally {
+			$this->release_purge_queue_lock( $lock_value );
 		}
 
-		$added_count = count( $all_items ) - count( $existing_items );
 		$this->logger->debug( 'Manager', 'Added ' . $added_count . ' new purge items to queue. Total in queue: ' . count( $all_items ) );
+	}
 
-		update_option( ZW_CACHEMAN_QUEUE, $all_items, false );
+	/**
+	 * Clear the purge queue while holding the shared mutation lock.
+	 *
+	 * @return int|null Number of removed items, or null when the lock timed out.
+	 */
+	public function clear_purge_queue(): ?int {
+		$lock_value = $this->acquire_purge_queue_lock();
+		if ( null === $lock_value ) {
+			$this->logger->error( 'Manager', 'Could not acquire purge queue lock; queue was not cleared.' );
+			return null;
+		}
+
+		try {
+			$queue       = self::get_current_purge_queue();
+			$queue_count = count( $queue );
+			delete_option( ZW_CACHEMAN_QUEUE );
+		} finally {
+			$this->release_purge_queue_lock( $lock_value );
+		}
+
+		return $queue_count;
 	}
 
 	/**
@@ -307,9 +471,8 @@ readonly class CachemanManager {
 	 * That 110s bound exceeds WordPress's cron lock (WP_CRON_LOCK_TIMEOUT,
 	 * 60s by default), so a slow pass can overlap the next spawn. Overlap is
 	 * benign: both runs may purge the same head-of-queue batch (duplicate
-	 * Cloudflare requests), but the diff-based queue update in
-	 * process_purge_queue() never drops concurrently enqueued items, and the
-	 * warm queue is best-effort by design.
+	 * Cloudflare requests), but all purge queue mutations use the same lock,
+	 * and the warm queue is best-effort by design.
 	 */
 	public function process_queue(): void {
 		$this->process_purge_queue();
@@ -326,8 +489,9 @@ readonly class CachemanManager {
 	 * enqueueing in the meantime. So instead of writing back a pre-call
 	 * snapshot (which would erase those concurrent enqueues), the queue is
 	 * re-read after the calls and only the successfully purged items are
-	 * removed. Failed items keep their place at the head of the queue and
-	 * retry next run; a queue cleared from the admin mid-pass stays cleared.
+	 * removed. The final read-modify-write uses the same short-lived lock as
+	 * producers and admin clears. Failed items keep their place at the head
+	 * of the queue and retry next run.
 	 */
 	private function process_purge_queue(): void {
 		$queue = get_option( ZW_CACHEMAN_QUEUE, [] );
@@ -368,17 +532,27 @@ readonly class CachemanManager {
 			return;
 		}
 
-		// Re-read the queue and drop only what was purged (autoload disabled
-		// for performance).
-		$current_queue = get_option( ZW_CACHEMAN_QUEUE, [] );
-		$next_queue    = array_values(
-			array_filter(
-				$current_queue,
-				static fn ( array $item ): bool => ! isset( $purged_keys[ self::item_key( $item ) ] )
-			)
-		);
+		$lock_value = $this->acquire_purge_queue_lock();
+		if ( null === $lock_value ) {
+			$this->logger->error( 'Manager', 'Could not acquire purge queue lock; purged items will retry next run.' );
+			return;
+		}
 
-		update_option( ZW_CACHEMAN_QUEUE, $next_queue, false );
+		try {
+			// Re-read the queue and drop only what was purged (autoload
+			// disabled for performance).
+			$current_queue = self::get_current_purge_queue();
+			$next_queue    = array_values(
+				array_filter(
+					$current_queue,
+					static fn ( array $item ): bool => ! isset( $purged_keys[ self::item_key( $item ) ] )
+				)
+			);
+
+			update_option( ZW_CACHEMAN_QUEUE, $next_queue, false );
+		} finally {
+			$this->release_purge_queue_lock( $lock_value );
+		}
 
 		if ( empty( $failed_items ) ) {
 			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $next_queue ) . ' items remaining in queue.' );
