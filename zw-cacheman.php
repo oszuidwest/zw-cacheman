@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZuidWest Cache Manager
  * Description: Purges Cloudflare cache when content changes. Queues taxonomy URLs for batch processing.
- * Version: 1.8.0
+ * Version: 1.9.0
  * Author: Streekomroep ZuidWest
  * Author URI: https://www.zuidwesttv.nl
  * License: GPL-3.0-or-later
