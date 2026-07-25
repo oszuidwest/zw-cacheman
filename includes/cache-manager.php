@@ -19,14 +19,16 @@ readonly class CachemanManager {
 	/**
 	 * Constructor
 	 *
-	 * @param CachemanAPI       $api       The API handler instance.
+	 * @param CachemanAPI       $api        The API handler instance.
 	 * @param CachemanUrlDelver $url_delver The URL delver instance.
 	 * @param CachemanLogger    $logger     The logger instance.
+	 * @param CachemanWarmer    $warmer     The cache warmer instance.
 	 */
 	public function __construct(
 		private CachemanAPI $api,
 		private CachemanUrlDelver $url_delver,
-		private CachemanLogger $logger
+		private CachemanLogger $logger,
+		private CachemanWarmer $warmer
 	) {
 		// Hook into post status transitions.
 		add_action( 'transition_post_status', $this->handle_post_status_change( ... ), 10, 3 );
@@ -201,10 +203,37 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items ) . ' ' . $description );
 
-		if ( ! $this->api->process_purge_items( $items ) ) {
-			$this->logger->error( 'Manager', 'Failed to process ' . $description );
-			$this->queue_purge_items( $items );
+		$failed_items = $this->purge_items( $items );
+		if ( ! empty( $failed_items ) ) {
+			$this->logger->error( 'Manager', 'Failed to process ' . count( $failed_items ) . ' ' . $description );
+			$this->queue_purge_items( $failed_items );
 		}
+	}
+
+	/**
+	 * Purge items via the API, queueing them for cache warming on success.
+	 *
+	 * @param array<array{type: PurgeType, url: string}> $items Items to purge.
+	 * @return array<array{type: PurgeType, url: string}> Items whose purge failed.
+	 */
+	private function purge_items( array $items ): array {
+		$results = $this->api->process_purge_items_by_type( $items );
+
+		$this->warmer->enqueue(
+			array_values(
+				array_filter(
+					$items,
+					static fn ( array $item ): bool => PurgeType::File === $item['type'] && $results[ PurgeType::File->value ]
+				)
+			)
+		);
+
+		return array_values(
+			array_filter(
+				$items,
+				static fn ( array $item ): bool => ! $results[ $item['type']->value ]
+			)
+		);
 	}
 
 	/**
@@ -251,6 +280,17 @@ readonly class CachemanManager {
 	 * Process the queue - called by WP-Cron
 	 */
 	public function process_queue(): void {
+		$this->process_purge_queue();
+
+		// Purge first, then drain the warm queue so pages are re-fetched
+		// after their cache entries are gone.
+		$this->warmer->process_queue();
+	}
+
+	/**
+	 * Purge a batch of queued items.
+	 */
+	private function process_purge_queue(): void {
 		$queue = get_option( ZW_CACHEMAN_QUEUE, [] );
 		if ( empty( $queue ) ) {
 			$this->logger->debug( 'Manager', 'Queue is empty. Nothing to process.' );
@@ -266,21 +306,20 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items (' . count( $remaining_items ) . ' remaining)' );
 
-		// Process the batch using the API's process_purge_items method.
-		$success = $this->api->process_purge_items( $items_to_process );
-
-		if ( $success ) {
+		$failed_items = $this->purge_items( $items_to_process );
+		if ( empty( $failed_items ) ) {
 			// Update the queue with remaining items (autoload disabled for performance).
 			update_option( ZW_CACHEMAN_QUEUE, $remaining_items, false );
 			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $remaining_items ) . ' items remaining in queue.' );
+		} elseif ( count( $failed_items ) < count( $items_to_process ) ) {
+			$next_queue = array_merge( $failed_items, $remaining_items );
+			update_option( ZW_CACHEMAN_QUEUE, $next_queue, false );
+			$this->logger->error(
+				'Manager',
+				'Failed to process ' . count( $failed_items ) . ' of ' . count( $items_to_process ) . ' items. Failed items will retry next run.'
+			);
 		} else {
 			$this->logger->error( 'Manager', 'Failed to process batch of ' . count( $items_to_process ) . ' items. Will retry next run.' );
-		}
-
-		// Ensure WP-Cron is still scheduled.
-		if ( ! wp_next_scheduled( ZW_CACHEMAN_CRON_HOOK ) ) {
-			wp_schedule_event( time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK );
-			$this->logger->debug( 'Manager', 'Re-scheduled missing cron job.' );
 		}
 	}
 }

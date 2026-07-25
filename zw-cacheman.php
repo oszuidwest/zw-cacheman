@@ -24,6 +24,8 @@ define( 'ZW_CACHEMAN_URL', plugin_dir_url( __FILE__ ) );
 define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
+define( 'ZW_CACHEMAN_WARM_QUEUE', 'zw_cacheman_warm_queue' );
+define( 'ZW_CACHEMAN_WARM_QUEUE_OVERFLOW', 'zw_cacheman_warm_queue_overflow' );
 
 // Includes required files.
 require_once ZW_CACHEMAN_DIR . 'includes/enum-purge-type.php';
@@ -34,6 +36,7 @@ require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider.php';
 require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-yoast.php';
 require_once ZW_CACHEMAN_DIR . 'includes/sitemap-provider-factory.php';
 require_once ZW_CACHEMAN_DIR . 'includes/url-delver.php';
+require_once ZW_CACHEMAN_DIR . 'includes/warmer.php';
 require_once ZW_CACHEMAN_DIR . 'includes/cache-manager.php';
 require_once ZW_CACHEMAN_DIR . 'includes/admin.php';
 
@@ -53,7 +56,8 @@ function zw_cacheman_init() {
 
 	$sitemap_provider = ZW_CACHEMAN_Core\CachemanSitemapProviderFactory::detect( $logger );
 	$url_delver       = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger, $sitemap_provider );
-	$manager          = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger );
+	$warmer           = new ZW_CACHEMAN_Core\CachemanWarmer( $logger );
+	$manager          = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger, $warmer );
 
 	// Only load admin interface in admin area.
 	if ( is_admin() ) {
@@ -110,6 +114,8 @@ function zw_cacheman_uninstall() {
 	// Clean up all plugin data.
 	delete_option( ZW_CACHEMAN_SETTINGS );
 	delete_option( ZW_CACHEMAN_QUEUE );
+	delete_option( ZW_CACHEMAN_WARM_QUEUE );
+	delete_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW );
 
 	// Clean up log directory.
 	$upload_dir = wp_upload_dir();

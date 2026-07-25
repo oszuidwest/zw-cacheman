@@ -213,8 +213,23 @@ readonly class CachemanAPI {
 	 * @return bool Success status
 	 */
 	public function process_purge_items( array $purge_items ): bool {
+		$results = $this->process_purge_items_by_type( $purge_items );
+
+		return $results[ PurgeType::File->value ] && $results[ PurgeType::Prefix->value ];
+	}
+
+	/**
+	 * Process purge items and preserve the result for each purge type.
+	 *
+	 * @param array<array{type: PurgeType, url: string}> $purge_items Items to purge.
+	 * @return array{file: bool, prefix: bool} Success status keyed by purge type.
+	 */
+	public function process_purge_items_by_type( array $purge_items ): array {
 		if ( empty( $purge_items ) ) {
-			return true;
+			return [
+				PurgeType::File->value   => true,
+				PurgeType::Prefix->value => true,
+			];
 		}
 
 		$this->logger->debug( 'API', 'Processing ' . count( $purge_items ) . ' purge items' );
@@ -253,7 +268,10 @@ readonly class CachemanAPI {
 			}
 		}
 
-		return $files_success && $prefixes_success;
+		return [
+			PurgeType::File->value   => $files_success,
+			PurgeType::Prefix->value => $prefixes_success,
+		];
 	}
 
 	/**

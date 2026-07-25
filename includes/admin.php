@@ -19,14 +19,15 @@ readonly class CachemanAdmin {
 	/**
 	 * Default settings
 	 *
-	 * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string}
+	 * @var array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string, enable_warming: bool}
 	 */
 	public const array DEFAULT_SETTINGS = [
-		'zone_id'       => '',
-		'api_key'       => '',
-		'batch_size'    => 30,
-		'debug_mode'    => false,
-		'extra_domains' => '',
+		'zone_id'        => '',
+		'api_key'        => '',
+		'batch_size'     => 30,
+		'debug_mode'     => false,
+		'extra_domains'  => '',
+		'enable_warming' => false,
 	];
 
 	/**
@@ -150,6 +151,26 @@ readonly class CachemanAdmin {
 		);
 
 		add_settings_field(
+			'enable_warming',
+			__( 'Warm Cache After Purge', 'zw-cacheman' ),
+			$this->render_field( ... ),
+			'zw_cacheman_settings',
+			'zw_cacheman_main_section',
+			[
+				'name' => 'enable_warming',
+				'type' => 'checkbox',
+			]
+		);
+
+		add_settings_field(
+			'warm_token_status',
+			__( 'WAF Warm Token Configured', 'zw-cacheman' ),
+			$this->render_warm_token_status( ... ),
+			'zw_cacheman_settings',
+			'zw_cacheman_main_section'
+		);
+
+		add_settings_field(
 			'debug_mode',
 			__( 'Debug Mode', 'zw-cacheman' ),
 			$this->render_field( ... ),
@@ -212,10 +233,33 @@ readonly class CachemanAdmin {
 	}
 
 	/**
+	 * Render the WAF warm-token configuration status without exposing its value.
+	 */
+	public function render_warm_token_status(): void {
+		$configured = CachemanWarmer::has_valid_waf_token();
+
+		echo '<strong>' . esc_html( $configured ? __( 'Yes', 'zw-cacheman' ) : __( 'No', 'zw-cacheman' ) ) . '</strong>';
+
+		if ( $configured ) {
+			echo '<p class="description">' . esc_html__( 'A valid token is configured in wp-config.php.', 'zw-cacheman' ) . '</p>';
+			return;
+		}
+
+		printf(
+			'<p class="description">%s</p>',
+			sprintf(
+				/* translators: %s: the ZW_CACHEMAN_WARM_TOKEN constant name */
+				esc_html__( 'Define %s in wp-config.php as exactly 64 hexadecimal characters to authenticate Cloudflare WAF exceptions.', 'zw-cacheman' ),
+				'<code>ZW_CACHEMAN_WARM_TOKEN</code>'
+			)
+		);
+	}
+
+	/**
 	 * Sanitize settings
 	 *
 	 * @param array<string, mixed> $input Raw input values.
-	 * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string} Sanitized values.
+	 * @return array{zone_id: string, api_key: string, batch_size: int, debug_mode: bool, extra_domains: string, enable_warming: bool} Sanitized values.
 	 */
 	public function sanitize_settings( array $input ): array {
 		$sanitized    = [];
@@ -239,8 +283,9 @@ readonly class CachemanAdmin {
 			);
 		}
 
-		// Sanitize checkbox to boolean.
-		$sanitized['debug_mode'] = isset( $input['debug_mode'] ) ? true : false;
+		// Sanitize checkboxes to boolean.
+		$sanitized['debug_mode']     = isset( $input['debug_mode'] );
+		$sanitized['enable_warming'] = isset( $input['enable_warming'] );
 
 		// Sanitize extra domains and validate each as a hostname.
 		$extra_domains_input = isset( $input['extra_domains'] ) ? sanitize_text_field( $input['extra_domains'] ) : '';
