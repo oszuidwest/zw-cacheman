@@ -146,7 +146,7 @@ readonly class CachemanAdmin {
 			[
 				'name'    => 'batch_size',
 				'type'    => 'number',
-				'default' => 30,
+				'default' => self::DEFAULT_SETTINGS['batch_size'],
 				'min'     => 1,
 				'max'     => CachemanAPI::PREFIX_BATCH_SIZE,
 			]
@@ -277,16 +277,18 @@ readonly class CachemanAdmin {
 
 		// Sanitize numeric fields. Capped at PREFIX_BATCH_SIZE so one cron
 		// pass sends at most one files and one prefixes request to Cloudflare.
-		$sanitized['batch_size'] = isset( $input['batch_size'] ) ? intval( $input['batch_size'] ) : 30;
+		$default_batch_size      = self::DEFAULT_SETTINGS['batch_size'];
+		$sanitized['batch_size'] = isset( $input['batch_size'] ) ? intval( $input['batch_size'] ) : $default_batch_size;
 		if ( $sanitized['batch_size'] < 1 || $sanitized['batch_size'] > CachemanAPI::PREFIX_BATCH_SIZE ) {
-			$sanitized['batch_size'] = 30;
+			$sanitized['batch_size'] = $default_batch_size;
 			add_settings_error(
 				'zw_cacheman_settings',
 				'invalid_batch_size',
 				sprintf(
-					/* translators: %d: maximum allowed batch size */
-					__( 'Batch size must be between 1 and %d. Reset to default (30).', 'zw-cacheman' ),
-					CachemanAPI::PREFIX_BATCH_SIZE
+					/* translators: 1: maximum allowed batch size, 2: default batch size */
+					__( 'Batch size must be between 1 and %1$d. Reset to default (%2$d).', 'zw-cacheman' ),
+					CachemanAPI::PREFIX_BATCH_SIZE,
+					$default_batch_size
 				),
 				'error'
 			);

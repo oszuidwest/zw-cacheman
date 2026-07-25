@@ -258,19 +258,15 @@ readonly class CachemanManager {
 	}
 
 	/**
-	 * Invalidate one option in every cache used by get_option().
-	 *
-	 * @param string $option Option name.
+	 * Invalidate the non-autoloaded purge queue cache.
 	 */
-	private static function invalidate_option_cache( string $option ): void {
-		wp_cache_delete( $option, 'options' );
+	private static function invalidate_purge_queue_cache(): void {
+		wp_cache_delete( ZW_CACHEMAN_QUEUE, 'options' );
 
-		foreach ( [ 'alloptions', 'notoptions' ] as $cache_key ) {
-			$cached_options = wp_cache_get( $cache_key, 'options' );
-			if ( is_array( $cached_options ) && isset( $cached_options[ $option ] ) ) {
-				unset( $cached_options[ $option ] );
-				wp_cache_set( $cache_key, $cached_options, 'options' );
-			}
+		$notoptions = wp_cache_get( 'notoptions', 'options' );
+		if ( is_array( $notoptions ) && isset( $notoptions[ ZW_CACHEMAN_QUEUE ] ) ) {
+			unset( $notoptions[ ZW_CACHEMAN_QUEUE ] );
+			wp_cache_set( 'notoptions', $notoptions, 'options' );
 		}
 	}
 
@@ -280,7 +276,7 @@ readonly class CachemanManager {
 	 * @return array<array{type: PurgeType, url: string}>
 	 */
 	private static function get_current_purge_queue(): array {
-		self::invalidate_option_cache( ZW_CACHEMAN_QUEUE );
+		self::invalidate_purge_queue_cache();
 		$queue = get_option( ZW_CACHEMAN_QUEUE, [] );
 
 		return is_array( $queue ) ? $queue : [];
@@ -297,13 +293,15 @@ readonly class CachemanManager {
 	private function acquire_purge_queue_lock(): ?string {
 		global $wpdb;
 
-		$deadline = microtime( true ) + self::QUEUE_LOCK_WAIT_SECONDS;
+		$deadline    = microtime( true ) + self::QUEUE_LOCK_WAIT_SECONDS;
+		$lock_id     = wp_generate_uuid4();
+		$retry_delay = 10_000;
 
 		do {
 			$lock_value = sprintf(
 				'%.6F:%s',
 				microtime( true ) + self::QUEUE_LOCK_TTL_SECONDS,
-				wp_generate_uuid4()
+				$lock_id
 			);
 
 			$inserted = $wpdb->query(
@@ -317,7 +315,6 @@ readonly class CachemanManager {
 			);
 
 			if ( 1 === $inserted ) {
-				self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
 				return $lock_value;
 			}
 
@@ -329,31 +326,28 @@ readonly class CachemanManager {
 				)
 			);
 
-			if ( ! is_string( $stored_lock ) ) {
-				self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
-				usleep( 10_000 );
-				continue;
-			}
-
-			$expires_at = (float) strstr( $stored_lock, ':', true );
-			if ( $expires_at <= microtime( true ) ) {
-				$updated = $wpdb->query(
-					$wpdb->prepare(
-						'UPDATE %i SET option_value = %s WHERE option_name = %s AND option_value = %s',
+			if ( is_string( $stored_lock ) ) {
+				$expires_at = (float) strstr( $stored_lock, ':', true );
+				if ( $expires_at <= microtime( true ) ) {
+					$updated = $wpdb->update(
 						$wpdb->options,
-						$lock_value,
-						ZW_CACHEMAN_QUEUE_LOCK,
-						$stored_lock
-					)
-				);
+						[ 'option_value' => $lock_value ],
+						[
+							'option_name'  => ZW_CACHEMAN_QUEUE_LOCK,
+							'option_value' => $stored_lock,
+						],
+						[ '%s' ],
+						[ '%s', '%s' ]
+					);
 
-				if ( 1 === $updated ) {
-					self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
-					return $lock_value;
+					if ( 1 === $updated ) {
+						return $lock_value;
+					}
 				}
 			}
 
-			usleep( 10_000 );
+			usleep( $retry_delay );
+			$retry_delay = min( $retry_delay * 2, 100_000 );
 		} while ( microtime( true ) < $deadline );
 
 		return null;
@@ -367,17 +361,16 @@ readonly class CachemanManager {
 	private function release_purge_queue_lock( string $lock_value ): void {
 		global $wpdb;
 
-		$deleted = $wpdb->query(
-			$wpdb->prepare(
-				'DELETE FROM %i WHERE option_name = %s AND option_value = %s',
-				$wpdb->options,
-				ZW_CACHEMAN_QUEUE_LOCK,
-				$lock_value
-			)
+		$deleted = $wpdb->delete(
+			$wpdb->options,
+			[
+				'option_name'  => ZW_CACHEMAN_QUEUE_LOCK,
+				'option_value' => $lock_value,
+			],
+			[ '%s', '%s' ]
 		);
 
 		if ( 1 === $deleted ) {
-			self::invalidate_option_cache( ZW_CACHEMAN_QUEUE_LOCK );
 			return;
 		}
 
@@ -407,27 +400,12 @@ readonly class CachemanManager {
 		try {
 			$existing_items = self::get_current_purge_queue();
 
-			// Combine and deduplicate based on URL and type.
-			$all_items   = [];
-			$unique_keys = [];
-
-			// Process existing items first.
-			foreach ( $existing_items as $item ) {
-				$key = self::item_key( $item );
-				if ( ! isset( $unique_keys[ $key ] ) ) {
-					$unique_keys[ $key ] = true;
-					$all_items[]         = $item;
-				}
+			// Preserve the first item for each URL and type.
+			$items_by_key = [];
+			foreach ( array_merge( $existing_items, $purge_items ) as $item ) {
+				$items_by_key[ self::item_key( $item ) ] ??= $item;
 			}
-
-			// Add new items if not already in queue.
-			foreach ( $purge_items as $item ) {
-				$key = self::item_key( $item );
-				if ( ! isset( $unique_keys[ $key ] ) ) {
-					$unique_keys[ $key ] = true;
-					$all_items[]         = $item;
-				}
-			}
+			$all_items = array_values( $items_by_key );
 
 			$added_count = count( $all_items ) - count( $existing_items );
 			update_option( ZW_CACHEMAN_QUEUE, $all_items, false );
@@ -451,8 +429,7 @@ readonly class CachemanManager {
 		}
 
 		try {
-			$queue       = self::get_current_purge_queue();
-			$queue_count = count( $queue );
+			$queue_count = count( self::get_current_purge_queue() );
 			delete_option( ZW_CACHEMAN_QUEUE );
 		} finally {
 			$this->release_purge_queue_lock( $lock_value );
@@ -464,15 +441,9 @@ readonly class CachemanManager {
 	/**
 	 * Process the queue - called by WP-Cron.
 	 *
-	 * Worst-case duration of one pass: batch_size is capped at
-	 * CachemanAPI::PREFIX_BATCH_SIZE (30), so the purge phase sends at most
-	 * one 'files' and one 'prefixes' request (2 x 30s timeout = 60s), and
-	 * the warm phase adds at most 5 fetches x 10s = 50s (see CachemanWarmer).
-	 * That 110s bound exceeds WordPress's cron lock (WP_CRON_LOCK_TIMEOUT,
-	 * 60s by default), so a slow pass can overlap the next spawn. Overlap is
-	 * benign: both runs may purge the same head-of-queue batch (duplicate
-	 * Cloudflare requests), but all purge queue mutations use the same lock,
-	 * and the warm queue is best-effort by design.
+	 * Network timeouts can make a pass outlive WordPress's cron lock, so
+	 * overlapping runs may purge the same batch. Queue mutations remain
+	 * serialized, and warming is best-effort.
 	 */
 	public function process_queue(): void {
 		$this->process_purge_queue();
@@ -485,13 +456,9 @@ readonly class CachemanManager {
 	/**
 	 * Purge a batch of queued items.
 	 *
-	 * The Cloudflare calls can take tens of seconds, and producers keep
-	 * enqueueing in the meantime. So instead of writing back a pre-call
-	 * snapshot (which would erase those concurrent enqueues), the queue is
-	 * re-read after the calls and only the successfully purged items are
-	 * removed. The final read-modify-write uses the same short-lived lock as
-	 * producers and admin clears. Failed items keep their place at the head
-	 * of the queue and retry next run.
+	 * Re-read the queue after the Cloudflare calls and remove only successful
+	 * items under the mutation lock. This preserves concurrent enqueues and
+	 * leaves failed items at the head for retry.
 	 */
 	private function process_purge_queue(): void {
 		$queue = get_option( ZW_CACHEMAN_QUEUE, [] );
@@ -501,7 +468,9 @@ readonly class CachemanManager {
 		}
 
 		$settings   = get_option( ZW_CACHEMAN_SETTINGS, [] );
-		$batch_size = ! empty( $settings['batch_size'] ) ? (int) $settings['batch_size'] : 30;
+		$batch_size = ! empty( $settings['batch_size'] )
+			? (int) $settings['batch_size']
+			: CachemanAdmin::DEFAULT_SETTINGS['batch_size'];
 
 		// Clamp values stored before sanitize_settings() enforced the cap.
 		$batch_size = max( 1, min( $batch_size, CachemanAPI::PREFIX_BATCH_SIZE ) );
@@ -514,17 +483,12 @@ readonly class CachemanManager {
 
 		$failed_items = $this->purge_items( $items_to_process );
 
-		$failed_keys = [];
-		foreach ( $failed_items as $item ) {
-			$failed_keys[ self::item_key( $item ) ] = true;
-		}
-
 		$purged_keys = [];
 		foreach ( $items_to_process as $item ) {
-			$key = self::item_key( $item );
-			if ( ! isset( $failed_keys[ $key ] ) ) {
-				$purged_keys[ $key ] = true;
-			}
+			$purged_keys[ self::item_key( $item ) ] = true;
+		}
+		foreach ( $failed_items as $item ) {
+			unset( $purged_keys[ self::item_key( $item ) ] );
 		}
 
 		if ( empty( $purged_keys ) ) {
