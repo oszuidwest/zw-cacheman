@@ -203,9 +203,10 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items ) . ' ' . $description );
 
-		if ( ! $this->purge_items( $items ) ) {
-			$this->logger->error( 'Manager', 'Failed to process ' . $description );
-			$this->queue_purge_items( $items );
+		$failed_items = $this->purge_items( $items );
+		if ( ! empty( $failed_items ) ) {
+			$this->logger->error( 'Manager', 'Failed to process ' . count( $failed_items ) . ' ' . $description );
+			$this->queue_purge_items( $failed_items );
 		}
 	}
 
@@ -213,15 +214,26 @@ readonly class CachemanManager {
 	 * Purge items via the API, queueing them for cache warming on success.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $items Items to purge.
-	 * @return bool Whether the purge succeeded.
+	 * @return array<array{type: PurgeType, url: string}> Items whose purge failed.
 	 */
-	private function purge_items( array $items ): bool {
-		if ( ! $this->api->process_purge_items( $items ) ) {
-			return false;
-		}
+	private function purge_items( array $items ): array {
+		$results = $this->api->process_purge_items_by_type( $items );
 
-		$this->warmer->enqueue( $items );
-		return true;
+		$this->warmer->enqueue(
+			array_values(
+				array_filter(
+					$items,
+					static fn ( array $item ): bool => PurgeType::File === $item['type'] && $results[ PurgeType::File->value ]
+				)
+			)
+		);
+
+		return array_values(
+			array_filter(
+				$items,
+				static fn ( array $item ): bool => ! $results[ $item['type']->value ]
+			)
+		);
 	}
 
 	/**
@@ -294,10 +306,18 @@ readonly class CachemanManager {
 
 		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items (' . count( $remaining_items ) . ' remaining)' );
 
-		if ( $this->purge_items( $items_to_process ) ) {
+		$failed_items = $this->purge_items( $items_to_process );
+		if ( empty( $failed_items ) ) {
 			// Update the queue with remaining items (autoload disabled for performance).
 			update_option( ZW_CACHEMAN_QUEUE, $remaining_items, false );
 			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $remaining_items ) . ' items remaining in queue.' );
+		} elseif ( count( $failed_items ) < count( $items_to_process ) ) {
+			$next_queue = array_merge( $failed_items, $remaining_items );
+			update_option( ZW_CACHEMAN_QUEUE, $next_queue, false );
+			$this->logger->error(
+				'Manager',
+				'Failed to process ' . count( $failed_items ) . ' of ' . count( $items_to_process ) . ' items. Failed items will retry next run.'
+			);
 		} else {
 			$this->logger->error( 'Manager', 'Failed to process batch of ' . count( $items_to_process ) . ' items. Will retry next run.' );
 		}
