@@ -237,7 +237,28 @@ readonly class CachemanManager {
 	}
 
 	/**
-	 * Queue purge items for later processing
+	 * Stable identity of a purge item, used for queue deduplication and for
+	 * removing processed items.
+	 *
+	 * @param array{type: PurgeType, url: string} $item Purge item.
+	 * @return string
+	 */
+	private static function item_key( array $item ): string {
+		return $item['type']->value . '|' . $item['url'];
+	}
+
+	/**
+	 * Queue purge items for later processing.
+	 *
+	 * Read-modify-write on a plain option: two producers saving in the same
+	 * instant can read the same snapshot, and the last writer wins (the
+	 * other save's items are lost). This is accepted: the window is the few
+	 * milliseconds between the read and the write below (no network I/O in
+	 * between), so it takes two saves in the same instant to hit it. Closing
+	 * it would require a lock or a real job store, which this plugin
+	 * deliberately avoids. The consumer-side race is the dangerous one
+	 * (its window spans the Cloudflare calls) and is closed in
+	 * process_purge_queue() by re-reading the queue after those calls.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $purge_items Items to add to the queue.
 	 */
@@ -254,7 +275,7 @@ readonly class CachemanManager {
 
 		// Process existing items first.
 		foreach ( $existing_items as $item ) {
-			$key = $item['type']->value . '|' . $item['url'];
+			$key = self::item_key( $item );
 			if ( ! isset( $unique_keys[ $key ] ) ) {
 				$unique_keys[ $key ] = true;
 				$all_items[]         = $item;
@@ -263,7 +284,7 @@ readonly class CachemanManager {
 
 		// Add new items if not already in queue.
 		foreach ( $purge_items as $item ) {
-			$key = $item['type']->value . '|' . $item['url'];
+			$key = self::item_key( $item );
 			if ( ! isset( $unique_keys[ $key ] ) ) {
 				$unique_keys[ $key ] = true;
 				$all_items[]         = $item;
@@ -277,7 +298,18 @@ readonly class CachemanManager {
 	}
 
 	/**
-	 * Process the queue - called by WP-Cron
+	 * Process the queue - called by WP-Cron.
+	 *
+	 * Worst-case duration of one pass: batch_size is capped at
+	 * CachemanAPI::PREFIX_BATCH_SIZE (30), so the purge phase sends at most
+	 * one 'files' and one 'prefixes' request (2 x 30s timeout = 60s), and
+	 * the warm phase adds at most 5 fetches x 10s = 50s (see CachemanWarmer).
+	 * That 110s bound exceeds WordPress's cron lock (WP_CRON_LOCK_TIMEOUT,
+	 * 60s by default), so a slow pass can overlap the next spawn. Overlap is
+	 * benign: both runs may purge the same head-of-queue batch (duplicate
+	 * Cloudflare requests), but the diff-based queue update in
+	 * process_purge_queue() never drops concurrently enqueued items, and the
+	 * warm queue is best-effort by design.
 	 */
 	public function process_queue(): void {
 		$this->process_purge_queue();
@@ -289,6 +321,13 @@ readonly class CachemanManager {
 
 	/**
 	 * Purge a batch of queued items.
+	 *
+	 * The Cloudflare calls can take tens of seconds, and producers keep
+	 * enqueueing in the meantime. So instead of writing back a pre-call
+	 * snapshot (which would erase those concurrent enqueues), the queue is
+	 * re-read after the calls and only the successfully purged items are
+	 * removed. Failed items keep their place at the head of the queue and
+	 * retry next run; a queue cleared from the admin mid-pass stays cleared.
 	 */
 	private function process_purge_queue(): void {
 		$queue = get_option( ZW_CACHEMAN_QUEUE, [] );
@@ -300,26 +339,54 @@ readonly class CachemanManager {
 		$settings   = get_option( ZW_CACHEMAN_SETTINGS, [] );
 		$batch_size = ! empty( $settings['batch_size'] ) ? (int) $settings['batch_size'] : 30;
 
-		// Take a batch of items from the queue.
-		$items_to_process = array_slice( $queue, 0, $batch_size );
-		$remaining_items  = array_slice( $queue, $batch_size );
+		// Clamp values stored before sanitize_settings() enforced the cap.
+		$batch_size = max( 1, min( $batch_size, CachemanAPI::PREFIX_BATCH_SIZE ) );
 
-		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items (' . count( $remaining_items ) . ' remaining)' );
+		// Take a batch of items from the head of the queue.
+		$items_to_process = array_slice( $queue, 0, $batch_size );
+		$remaining_count  = count( $queue ) - count( $items_to_process );
+
+		$this->logger->debug( 'Manager', 'Processing ' . count( $items_to_process ) . ' items (' . $remaining_count . ' remaining)' );
 
 		$failed_items = $this->purge_items( $items_to_process );
+
+		$failed_keys = [];
+		foreach ( $failed_items as $item ) {
+			$failed_keys[ self::item_key( $item ) ] = true;
+		}
+
+		$purged_keys = [];
+		foreach ( $items_to_process as $item ) {
+			$key = self::item_key( $item );
+			if ( ! isset( $failed_keys[ $key ] ) ) {
+				$purged_keys[ $key ] = true;
+			}
+		}
+
+		if ( empty( $purged_keys ) ) {
+			$this->logger->error( 'Manager', 'Failed to process batch of ' . count( $items_to_process ) . ' items. Will retry next run.' );
+			return;
+		}
+
+		// Re-read the queue and drop only what was purged (autoload disabled
+		// for performance).
+		$current_queue = get_option( ZW_CACHEMAN_QUEUE, [] );
+		$next_queue    = array_values(
+			array_filter(
+				$current_queue,
+				static fn ( array $item ): bool => ! isset( $purged_keys[ self::item_key( $item ) ] )
+			)
+		);
+
+		update_option( ZW_CACHEMAN_QUEUE, $next_queue, false );
+
 		if ( empty( $failed_items ) ) {
-			// Update the queue with remaining items (autoload disabled for performance).
-			update_option( ZW_CACHEMAN_QUEUE, $remaining_items, false );
-			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $remaining_items ) . ' items remaining in queue.' );
-		} elseif ( count( $failed_items ) < count( $items_to_process ) ) {
-			$next_queue = array_merge( $failed_items, $remaining_items );
-			update_option( ZW_CACHEMAN_QUEUE, $next_queue, false );
+			$this->logger->debug( 'Manager', 'Successfully processed batch. ' . count( $next_queue ) . ' items remaining in queue.' );
+		} else {
 			$this->logger->error(
 				'Manager',
 				'Failed to process ' . count( $failed_items ) . ' of ' . count( $items_to_process ) . ' items. Failed items will retry next run.'
 			);
-		} else {
-			$this->logger->error( 'Manager', 'Failed to process batch of ' . count( $items_to_process ) . ' items. Will retry next run.' );
 		}
 	}
 }

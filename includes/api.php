@@ -25,9 +25,10 @@ readonly class CachemanAPI {
 	/**
 	 * Conservative batch size for prefix purge requests. The API caps prefix
 	 * purges at 100 per request (error 1117); 30 stays well under the limit
-	 * across plan types.
+	 * across plan types. Also the upper bound for the batch_size setting, so
+	 * one queue pass sends at most one files and one prefixes request.
 	 */
-	private const PREFIX_BATCH_SIZE = 30;
+	public const PREFIX_BATCH_SIZE = 30;
 
 	/**
 	 * Constructor

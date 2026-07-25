@@ -147,6 +147,8 @@ readonly class CachemanAdmin {
 				'name'    => 'batch_size',
 				'type'    => 'number',
 				'default' => 30,
+				'min'     => 1,
+				'max'     => CachemanAPI::PREFIX_BATCH_SIZE,
 			]
 		);
 
@@ -198,7 +200,7 @@ readonly class CachemanAdmin {
 	/**
 	 * Render settings field
 	 *
-	 * @param array{name: string, type: string, default?: mixed} $args Field arguments.
+	 * @param array{name: string, type: string, default?: mixed, min?: int, max?: int} $args Field arguments.
 	 */
 	public function render_field( array $args ): void {
 		$settings = get_option( ZW_CACHEMAN_SETTINGS, self::DEFAULT_SETTINGS );
@@ -215,11 +217,13 @@ readonly class CachemanAdmin {
 				esc_attr( $value )
 			),
 			'number' => printf(
-				'<input type="number" id="%s" name="%s[%s]" value="%s" class="regular-text" />',
+				'<input type="number" id="%s" name="%s[%s]" value="%s" min="%s" max="%s" class="regular-text" />',
 				esc_attr( $name ),
 				esc_attr( ZW_CACHEMAN_SETTINGS ),
 				esc_attr( $name ),
-				esc_attr( $value )
+				esc_attr( $value ),
+				esc_attr( (string) ( $args['min'] ?? 1 ) ),
+				esc_attr( (string) ( $args['max'] ?? '' ) )
 			),
 			'checkbox' => printf(
 				'<input type="checkbox" id="%s" name="%s[%s]" value="1" %s />',
@@ -271,14 +275,19 @@ readonly class CachemanAdmin {
 			? sanitize_text_field( $input['api_key'] )
 			: $old_settings['api_key']; // Keep old API key if empty (to prevent accidental clear).
 
-		// Sanitize numeric fields.
+		// Sanitize numeric fields. Capped at PREFIX_BATCH_SIZE so one cron
+		// pass sends at most one files and one prefixes request to Cloudflare.
 		$sanitized['batch_size'] = isset( $input['batch_size'] ) ? intval( $input['batch_size'] ) : 30;
-		if ( $sanitized['batch_size'] < 1 ) {
+		if ( $sanitized['batch_size'] < 1 || $sanitized['batch_size'] > CachemanAPI::PREFIX_BATCH_SIZE ) {
 			$sanitized['batch_size'] = 30;
 			add_settings_error(
 				'zw_cacheman_settings',
 				'invalid_batch_size',
-				__( 'Batch size must be at least 1. Reset to default (30).', 'zw-cacheman' ),
+				sprintf(
+					/* translators: %d: maximum allowed batch size */
+					__( 'Batch size must be between 1 and %d. Reset to default (30).', 'zw-cacheman' ),
+					CachemanAPI::PREFIX_BATCH_SIZE
+				),
 				'error'
 			);
 		}
