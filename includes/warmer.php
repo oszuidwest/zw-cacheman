@@ -35,17 +35,17 @@ readonly class CachemanWarmer {
 	private const WARM_QUEUE_MAX = 500;
 
 	/**
-	 * Option used as an atomic lock for warm-queue mutations.
-	 */
-	private const WARM_QUEUE_LOCK = 'zw_cacheman_warm_queue_lock';
-
-	/**
 	 * Lock lifetime and retry interval. Queue mutations are local option
 	 * updates, so the lock should normally be held for only milliseconds.
 	 */
 	private const WARM_QUEUE_LOCK_TTL_SECONDS        = 30;
 	private const WARM_QUEUE_LOCK_RETRY_MICROSECONDS = 50_000;
 	private const WARM_QUEUE_LOCK_ATTEMPTS           = 40;
+
+	/**
+	 * Time before an interrupted warm claim can be retried.
+	 */
+	private const WARM_CLAIM_TTL_SECONDS = 120;
 
 	/**
 	 * Header used to authenticate cache-warming requests at Cloudflare.
@@ -89,13 +89,29 @@ readonly class CachemanWarmer {
 
 		$this->update_queue(
 			function ( array $queue ) use ( $urls ): array {
-				$queue = array_values( array_unique( array_merge( $queue, $urls ) ) );
+				$pending_urls = [];
+				$now          = time();
+
+				foreach ( $queue as $entry ) {
+					if ( $entry['claimed_until'] <= $now ) {
+						$pending_urls[ $entry['url'] ] = true;
+					}
+				}
+
+				foreach ( $urls as $url ) {
+					if ( isset( $pending_urls[ $url ] ) ) {
+						continue;
+					}
+
+					$queue[]              = self::new_queue_entry( $url );
+					$pending_urls[ $url ] = true;
+				}
 
 				if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
 					$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
-					if ( false === get_transient( 'zw_cacheman_warm_queue_overflow' ) ) {
+					if ( false === get_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW ) ) {
 						$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
-						set_transient( 'zw_cacheman_warm_queue_overflow', true, 5 * MINUTE_IN_SECONDS );
+						set_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW, true, 5 * MINUTE_IN_SECONDS );
 					}
 				}
 
@@ -121,23 +137,22 @@ readonly class CachemanWarmer {
 			return;
 		}
 
-		$queue = $this->read_queue();
-		if ( empty( $queue ) ) {
+		$batch = $this->claim_batch();
+		if ( empty( $batch ) ) {
 			return;
 		}
 
 		$warmed = [];
-		foreach ( array_slice( $queue, 0, self::WARM_BATCH_SIZE ) as $url ) {
-			if ( $this->warm( $url ) ) {
-				$warmed[] = $url;
+		$failed = [];
+		foreach ( $batch as $entry ) {
+			if ( $this->warm( $entry['url'] ) ) {
+				$warmed[] = $entry['id'];
+			} else {
+				$failed[] = $entry['id'];
 			}
 		}
 
-		// Re-read and drop only the URLs we warmed; failed fetches stay
-		// queued for the next run.
-		$this->update_queue(
-			static fn ( array $current_queue ): array => array_values( array_diff( $current_queue, $warmed ) )
-		);
+		$this->acknowledge_batch( $warmed, $failed );
 	}
 
 	/**
@@ -178,13 +193,127 @@ readonly class CachemanWarmer {
 	}
 
 	/**
-	 * Read the warm queue option, normalizing a corrupt value to an empty list.
+	 * Read and normalize the warm queue.
 	 *
-	 * @return array<string> Queued URLs.
+	 * Legacy string entries are upgraded in memory and persisted by the next
+	 * queue mutation.
+	 *
+	 * @return array<array{id: string, url: string, claimed_until: int}> Queue entries.
 	 */
 	private function read_queue(): array {
 		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
-		return is_array( $queue ) ? $queue : [];
+		if ( ! is_array( $queue ) ) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ( $queue as $entry ) {
+			if ( is_string( $entry ) && '' !== $entry ) {
+				$normalized[] = self::new_queue_entry( $entry );
+				continue;
+			}
+
+			if ( ! is_array( $entry ) || ! isset( $entry['url'] ) || ! is_string( $entry['url'] ) || '' === $entry['url'] ) {
+				continue;
+			}
+
+			$normalized[] = [
+				'id'            => isset( $entry['id'] ) && is_string( $entry['id'] ) && '' !== $entry['id'] ? $entry['id'] : wp_generate_uuid4(),
+				'url'           => $entry['url'],
+				'claimed_until' => isset( $entry['claimed_until'] ) ? (int) $entry['claimed_until'] : 0,
+			];
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Create a new pending queue generation.
+	 *
+	 * @param string $url URL to warm.
+	 * @return array{id: string, url: string, claimed_until: int} Queue entry.
+	 */
+	private static function new_queue_entry( string $url ): array {
+		return [
+			'id'            => wp_generate_uuid4(),
+			'url'           => $url,
+			'claimed_until' => 0,
+		];
+	}
+
+	/**
+	 * Claim the next bounded batch under the shared queue lock.
+	 *
+	 * @return array<array{id: string, url: string, claimed_until: int}> Claimed entries.
+	 */
+	private function claim_batch(): array {
+		$lock = $this->acquire_queue_lock();
+		if ( null === $lock ) {
+			return [];
+		}
+
+		try {
+			$queue         = $this->read_queue();
+			$batch         = [];
+			$now           = time();
+			$claimed_until = $now + self::WARM_CLAIM_TTL_SECONDS;
+
+			foreach ( $queue as &$entry ) {
+				if ( count( $batch ) >= self::WARM_BATCH_SIZE ) {
+					break;
+				}
+
+				if ( $entry['claimed_until'] > $now ) {
+					continue;
+				}
+
+				$entry['claimed_until'] = $claimed_until;
+				$batch[]                = $entry;
+			}
+			unset( $entry );
+
+			if ( [] !== $batch ) {
+				update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
+			}
+
+			return $batch;
+		} finally {
+			$this->release_queue_lock( $lock );
+		}
+	}
+
+	/**
+	 * Remove successful generations and rotate failures to the queue tail.
+	 *
+	 * @param array<string> $warmed Successful generation IDs.
+	 * @param array<string> $failed Failed generation IDs.
+	 */
+	private function acknowledge_batch( array $warmed, array $failed ): void {
+		$warmed_ids = array_fill_keys( $warmed, true );
+		$failed_ids = array_fill_keys( $failed, true );
+
+		$this->update_queue(
+			static function ( array $queue ) use ( $warmed_ids, $failed_ids ): array {
+				$remaining = [];
+				$retry     = [];
+
+				foreach ( $queue as $entry ) {
+					if ( isset( $warmed_ids[ $entry['id'] ] ) ) {
+						continue;
+					}
+
+					if ( isset( $failed_ids[ $entry['id'] ] ) ) {
+						$entry['claimed_until'] = 0;
+						$retry[]                = $entry;
+						continue;
+					}
+
+					$remaining[] = $entry;
+				}
+
+				return array_merge( $remaining, $retry );
+			}
+		);
 	}
 
 	/**
@@ -206,7 +335,7 @@ readonly class CachemanWarmer {
 	/**
 	 * Atomically mutate the warm queue under the shared option lock.
 	 *
-	 * @param callable(array<string>): array<string> $update Queue mutation.
+	 * @param callable(array<array{id:string,url:string,claimed_until:int}>):array<array{id:string,url:string,claimed_until:int}> $update Queue mutation.
 	 * @return bool Whether the queue was updated.
 	 */
 	private function update_queue( callable $update ): bool {
@@ -238,24 +367,24 @@ readonly class CachemanWarmer {
 		$lock = ( time() + self::WARM_QUEUE_LOCK_TTL_SECONDS ) . '|' . wp_generate_uuid4();
 
 		for ( $attempt = 0; $attempt < self::WARM_QUEUE_LOCK_ATTEMPTS; $attempt++ ) {
-			if ( add_option( self::WARM_QUEUE_LOCK, $lock, '', false ) ) {
+			if ( add_option( ZW_CACHEMAN_WARM_QUEUE_LOCK, $lock, '', false ) ) {
 				return $lock;
 			}
 
-			$current_lock = get_option( self::WARM_QUEUE_LOCK, '' );
+			$current_lock = get_option( ZW_CACHEMAN_WARM_QUEUE_LOCK, '' );
 			if ( is_string( $current_lock ) && (int) $current_lock < time() ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- A conditional update is required for atomic stale-lock recovery.
 				$updated = $wpdb->update(
 					$wpdb->options,
 					[ 'option_value' => $lock ],
 					[
-						'option_name'  => self::WARM_QUEUE_LOCK,
+						'option_name'  => ZW_CACHEMAN_WARM_QUEUE_LOCK,
 						'option_value' => $current_lock,
 					],
 					[ '%s' ],
 					[ '%s', '%s' ]
 				);
-				wp_cache_delete( self::WARM_QUEUE_LOCK, 'options' );
+				wp_cache_delete( ZW_CACHEMAN_WARM_QUEUE_LOCK, 'options' );
 
 				if ( 1 === $updated ) {
 					return $lock;
@@ -281,12 +410,12 @@ readonly class CachemanWarmer {
 		$wpdb->delete(
 			$wpdb->options,
 			[
-				'option_name'  => self::WARM_QUEUE_LOCK,
+				'option_name'  => ZW_CACHEMAN_WARM_QUEUE_LOCK,
 				'option_value' => $lock,
 			],
 			[ '%s', '%s' ]
 		);
-		wp_cache_delete( self::WARM_QUEUE_LOCK, 'options' );
+		wp_cache_delete( ZW_CACHEMAN_WARM_QUEUE_LOCK, 'options' );
 	}
 
 	/**
