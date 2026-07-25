@@ -199,7 +199,7 @@ The warmer does not queue:
 - `Prefix` purge items. A prefix purge may invalidate an entire archive and its pagination, but the warmer only fetches an archive landing page when that URL is also present as a separate `File` item; it does not fetch `/page/2/` and later pages.
 - WordPress REST API URLs
 
-Pending URLs are deduplicated in a queue capped at 500 entries. If the same URL is purged again while an earlier fetch is in flight, the newer purge remains as a separate queue generation. The every-minute WP-Cron job claims at most five warming requests per run, after purge processing. Each request is an unauthenticated public `GET` unless a valid WAF warm token is configured. Transport failures move to the queue tail for a later retry; any HTTP response, including `4xx` or `5xx`, is considered terminal and removes only the fetched generation. Actual timing depends on WP-Cron traffic.
+Pending URLs are deduplicated in a queue capped at 500 entries. The every-minute WP-Cron job fetches at most five queued URLs per run, after purge processing. Each request is an unauthenticated public `GET` unless a valid WAF warm token is configured. Transport failures move to the queue tail for a later retry; any HTTP response, including `4xx` or `5xx`, is considered terminal and dequeues the URL. Warming is best-effort: queue updates are not atomic, so under concurrent purges or overlapping cron runs a URL can occasionally be warmed more than once or a pending URL can be lost — a visitor then warms that page instead. Actual timing depends on WP-Cron traffic.
 
 ### Authenticated Cloudflare WAF exception
 

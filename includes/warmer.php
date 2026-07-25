@@ -13,6 +13,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Warms page URLs after they are purged.
+ *
+ * The queue is a non-autoloaded option mutated with plain read-modify-write,
+ * like the purge queue. Warming is best-effort: concurrent writers can lose
+ * an enqueue, and overlapping cron runs can fetch a URL more than once. The
+ * worst case either way is a page warmed by a visitor instead of the server,
+ * or redundant GETs — never a missed purge.
  */
 readonly class CachemanWarmer {
 
@@ -22,8 +28,9 @@ readonly class CachemanWarmer {
 	private const WARM_TIMEOUT_SECONDS = 10;
 
 	/**
-	 * Maximum number of URLs warmed per cron run. Bounds how long a single
-	 * WP-Cron pass can block (batch x timeout stays under the cron lock).
+	 * Maximum number of URLs warmed per cron run. Bounds the warmer's share
+	 * of a WP-Cron pass to batch x timeout (nominally 50 seconds); the purge
+	 * phase that runs first has its own, unbounded duration.
 	 */
 	private const WARM_BATCH_SIZE = 5;
 
@@ -35,19 +42,6 @@ readonly class CachemanWarmer {
 	private const WARM_QUEUE_MAX = 500;
 
 	/**
-	 * Lock lifetime and retry interval. Queue mutations are local option
-	 * updates, so the lock should normally be held for only milliseconds.
-	 */
-	private const WARM_QUEUE_LOCK_TTL_SECONDS        = 30;
-	private const WARM_QUEUE_LOCK_RETRY_MICROSECONDS = 50_000;
-	private const WARM_QUEUE_LOCK_ATTEMPTS           = 40;
-
-	/**
-	 * Time before an interrupted warm claim can be retried.
-	 */
-	private const WARM_CLAIM_TTL_SECONDS = 120;
-
-	/**
 	 * Header used to authenticate cache-warming requests at Cloudflare.
 	 */
 	private const WARM_TOKEN_HEADER = 'X-ZW-Cache-Warm-Token';
@@ -55,13 +49,9 @@ readonly class CachemanWarmer {
 	/**
 	 * Constructor
 	 *
-	 * @param CachemanLogger $logger  The logger instance.
-	 * @param bool           $enabled Whether warming is enabled.
+	 * @param CachemanLogger $logger The logger instance.
 	 */
-	public function __construct(
-		private CachemanLogger $logger,
-		private bool $enabled
-	) {
+	public function __construct( private CachemanLogger $logger ) {
 	}
 
 	/**
@@ -72,13 +62,22 @@ readonly class CachemanWarmer {
 	}
 
 	/**
+	 * Whether cache warming is enabled in the plugin settings.
+	 */
+	private function is_enabled(): bool {
+		$settings = get_option( ZW_CACHEMAN_SETTINGS, [] );
+
+		return ! empty( $settings['enable_warming'] );
+	}
+
+	/**
 	 * Queue the warmable page URLs from a set of purge items. The queue is
 	 * drained in batches by the every-minute cron.
 	 *
 	 * @param array<array{type: PurgeType, url: string}> $items Purged items.
 	 */
 	public function enqueue( array $items ): void {
-		if ( ! $this->enabled ) {
+		if ( ! $this->is_enabled() ) {
 			return;
 		}
 
@@ -87,81 +86,63 @@ readonly class CachemanWarmer {
 			return;
 		}
 
-		$this->update_queue(
-			function ( array $queue ) use ( $urls ): array {
-				$pending_urls = [];
-				$now          = time();
+		$queue = array_values( array_unique( array_merge( $this->read_queue(), $urls ) ) );
 
-				foreach ( $queue as $entry ) {
-					if ( $entry['claimed_until'] <= $now ) {
-						$pending_urls[ $entry['url'] ] = true;
-					}
-				}
-
-				foreach ( $urls as $url ) {
-					if ( isset( $pending_urls[ $url ] ) ) {
-						continue;
-					}
-
-					$queue[]              = self::new_queue_entry( $url );
-					$pending_urls[ $url ] = true;
-				}
-
-				if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
-					$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
-					if ( false === get_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW ) ) {
-						$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
-						set_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW, true, 5 * MINUTE_IN_SECONDS );
-					}
-				}
-
-				return $queue;
+		if ( count( $queue ) > self::WARM_QUEUE_MAX ) {
+			$queue = array_slice( $queue, -self::WARM_QUEUE_MAX );
+			// Throttle the overflow log: purge events are unbounded (think
+			// bulk imports), and error() always writes to the PHP error log.
+			if ( false === get_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW ) ) {
+				$this->logger->error( 'Warmer', 'Warm queue exceeded ' . self::WARM_QUEUE_MAX . '; dropped oldest URLs' );
+				set_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW, true, 5 * MINUTE_IN_SECONDS );
 			}
-		);
+		}
+
+		update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
 	}
 
 	/**
 	 * Warm a bounded batch from the queue. Called by the manager after each
 	 * purge pass. Keeps each WP-Cron pass short instead of processing a whole
-	 * burst at once. Items are removed only after a successful warm, and the
-	 * queue is re-read before writing, so a crash mid-batch does not lose
-	 * failed URLs and the shared mutation lock preserves concurrently queued
-	 * URLs.
+	 * burst at once. URLs are removed only after their fetch completes, and
+	 * the queue is re-read before writing, which narrows — but does not
+	 * close — the window in which a concurrently enqueued URL is lost; see
+	 * the class docblock for the best-effort semantics.
 	 */
 	public function process_queue(): void {
-		if ( ! $this->enabled ) {
+		if ( ! $this->is_enabled() ) {
 			// Warming was turned off; drop any URLs still parked in the queue.
-			if ( [] !== $this->read_queue() ) {
-				$this->clear_queue();
-			}
+			delete_option( ZW_CACHEMAN_WARM_QUEUE );
 			return;
 		}
 
-		$batch = $this->claim_batch();
+		$batch = array_slice( $this->read_queue(), 0, self::WARM_BATCH_SIZE );
 		if ( empty( $batch ) ) {
 			return;
 		}
 
-		$warmed = [];
 		$failed = [];
-		foreach ( $batch as $entry ) {
-			if ( $this->warm( $entry['url'] ) ) {
-				$warmed[] = $entry['id'];
-			} else {
-				$failed[] = $entry['id'];
+		foreach ( $batch as $url ) {
+			if ( ! $this->warm( $url ) ) {
+				$failed[] = $url;
 			}
 		}
 
-		$this->acknowledge_batch( $warmed, $failed );
+		// Drop the fetched batch, keep URLs enqueued while it was in flight,
+		// and rotate transport failures to the tail for a later retry.
+		$queue = array_merge( array_diff( $this->read_queue(), $batch ), $failed );
+		update_option( ZW_CACHEMAN_WARM_QUEUE, array_values( $queue ), false );
 	}
 
 	/**
-	 * Warm a single URL by fetching it.
+	 * Warm a single URL by fetching it through the WordPress HTTP API, so
+	 * proxy configuration, external-request blocking, and the HTTP API
+	 * filters keep applying to warm requests.
 	 *
 	 * Returns false only on a transport error (WP_Error), so the URL stays
-	 * queued for a retry. Any HTTP response — including 4xx/5xx — is treated as
-	 * terminal (the URL is dequeued) to avoid retrying a permanently missing
-	 * page forever.
+	 * queued for a retry. Any HTTP response — including 4xx/5xx — is treated
+	 * as terminal (the URL is dequeued) to avoid retrying a permanently
+	 * missing page forever.
 	 *
 	 * @param string $url URL to warm.
 	 * @return bool Whether the URL can be dequeued.
@@ -193,12 +174,9 @@ readonly class CachemanWarmer {
 	}
 
 	/**
-	 * Read and normalize the warm queue.
+	 * Read the warm queue, dropping anything that is not a non-empty string.
 	 *
-	 * Legacy string entries are upgraded in memory and persisted by the next
-	 * queue mutation.
-	 *
-	 * @return array<array{id: string, url: string, claimed_until: int}> Queue entries.
+	 * @return array<string> Queued URLs.
 	 */
 	private function read_queue(): array {
 		$queue = get_option( ZW_CACHEMAN_WARM_QUEUE, [] );
@@ -206,216 +184,9 @@ readonly class CachemanWarmer {
 			return [];
 		}
 
-		$normalized = [];
-		foreach ( $queue as $entry ) {
-			if ( is_string( $entry ) && '' !== $entry ) {
-				$normalized[] = self::new_queue_entry( $entry );
-				continue;
-			}
-
-			if ( ! is_array( $entry ) || ! isset( $entry['url'] ) || ! is_string( $entry['url'] ) || '' === $entry['url'] ) {
-				continue;
-			}
-
-			$normalized[] = [
-				'id'            => isset( $entry['id'] ) && is_string( $entry['id'] ) && '' !== $entry['id'] ? $entry['id'] : wp_generate_uuid4(),
-				'url'           => $entry['url'],
-				'claimed_until' => isset( $entry['claimed_until'] ) ? (int) $entry['claimed_until'] : 0,
-			];
-		}
-
-		return $normalized;
-	}
-
-	/**
-	 * Create a new pending queue generation.
-	 *
-	 * @param string $url URL to warm.
-	 * @return array{id: string, url: string, claimed_until: int} Queue entry.
-	 */
-	private static function new_queue_entry( string $url ): array {
-		return [
-			'id'            => wp_generate_uuid4(),
-			'url'           => $url,
-			'claimed_until' => 0,
-		];
-	}
-
-	/**
-	 * Claim the next bounded batch under the shared queue lock.
-	 *
-	 * @return array<array{id: string, url: string, claimed_until: int}> Claimed entries.
-	 */
-	private function claim_batch(): array {
-		$lock = $this->acquire_queue_lock();
-		if ( null === $lock ) {
-			return [];
-		}
-
-		try {
-			$queue         = $this->read_queue();
-			$batch         = [];
-			$now           = time();
-			$claimed_until = $now + self::WARM_CLAIM_TTL_SECONDS;
-
-			foreach ( $queue as &$entry ) {
-				if ( count( $batch ) >= self::WARM_BATCH_SIZE ) {
-					break;
-				}
-
-				if ( $entry['claimed_until'] > $now ) {
-					continue;
-				}
-
-				$entry['claimed_until'] = $claimed_until;
-				$batch[]                = $entry;
-			}
-			unset( $entry );
-
-			if ( [] !== $batch ) {
-				update_option( ZW_CACHEMAN_WARM_QUEUE, $queue, false );
-			}
-
-			return $batch;
-		} finally {
-			$this->release_queue_lock( $lock );
-		}
-	}
-
-	/**
-	 * Remove successful generations and rotate failures to the queue tail.
-	 *
-	 * @param array<string> $warmed Successful generation IDs.
-	 * @param array<string> $failed Failed generation IDs.
-	 */
-	private function acknowledge_batch( array $warmed, array $failed ): void {
-		$warmed_ids = array_fill_keys( $warmed, true );
-		$failed_ids = array_fill_keys( $failed, true );
-
-		$this->update_queue(
-			static function ( array $queue ) use ( $warmed_ids, $failed_ids ): array {
-				$remaining = [];
-				$retry     = [];
-
-				foreach ( $queue as $entry ) {
-					if ( isset( $warmed_ids[ $entry['id'] ] ) ) {
-						continue;
-					}
-
-					if ( isset( $failed_ids[ $entry['id'] ] ) ) {
-						$entry['claimed_until'] = 0;
-						$retry[]                = $entry;
-						continue;
-					}
-
-					$remaining[] = $entry;
-				}
-
-				return array_merge( $remaining, $retry );
-			}
+		return array_values(
+			array_filter( $queue, static fn ( $url ): bool => is_string( $url ) && '' !== $url )
 		);
-	}
-
-	/**
-	 * Delete the warm queue under the shared option lock.
-	 */
-	private function clear_queue(): void {
-		$lock = $this->acquire_queue_lock();
-		if ( null === $lock ) {
-			return;
-		}
-
-		try {
-			delete_option( ZW_CACHEMAN_WARM_QUEUE );
-		} finally {
-			$this->release_queue_lock( $lock );
-		}
-	}
-
-	/**
-	 * Atomically mutate the warm queue under the shared option lock.
-	 *
-	 * @param callable(array<array{id:string,url:string,claimed_until:int}>):array<array{id:string,url:string,claimed_until:int}> $update Queue mutation.
-	 * @return bool Whether the queue was updated.
-	 */
-	private function update_queue( callable $update ): bool {
-		$lock = $this->acquire_queue_lock();
-		if ( null === $lock ) {
-			return false;
-		}
-
-		try {
-			update_option( ZW_CACHEMAN_WARM_QUEUE, $update( $this->read_queue() ), false );
-			return true;
-		} finally {
-			$this->release_queue_lock( $lock );
-		}
-	}
-
-	/**
-	 * Acquire the shared warm-queue lock.
-	 *
-	 * The add_option() function provides the atomic uncontended path. An
-	 * expired lock is replaced with a compare-and-swap update so only one
-	 * waiter can steal it.
-	 *
-	 * @return string|null Lock value owned by this request, or null on timeout.
-	 */
-	private function acquire_queue_lock(): ?string {
-		global $wpdb;
-
-		$lock = ( time() + self::WARM_QUEUE_LOCK_TTL_SECONDS ) . '|' . wp_generate_uuid4();
-
-		for ( $attempt = 0; $attempt < self::WARM_QUEUE_LOCK_ATTEMPTS; $attempt++ ) {
-			if ( add_option( ZW_CACHEMAN_WARM_QUEUE_LOCK, $lock, '', false ) ) {
-				return $lock;
-			}
-
-			$current_lock = get_option( ZW_CACHEMAN_WARM_QUEUE_LOCK, '' );
-			if ( is_string( $current_lock ) && (int) $current_lock < time() ) {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- A conditional update is required for atomic stale-lock recovery.
-				$updated = $wpdb->update(
-					$wpdb->options,
-					[ 'option_value' => $lock ],
-					[
-						'option_name'  => ZW_CACHEMAN_WARM_QUEUE_LOCK,
-						'option_value' => $current_lock,
-					],
-					[ '%s' ],
-					[ '%s', '%s' ]
-				);
-				wp_cache_delete( ZW_CACHEMAN_WARM_QUEUE_LOCK, 'options' );
-
-				if ( 1 === $updated ) {
-					return $lock;
-				}
-			}
-
-			usleep( self::WARM_QUEUE_LOCK_RETRY_MICROSECONDS );
-		}
-
-		$this->logger->error( 'Warmer', 'Could not acquire the warm queue lock; queue update skipped' );
-		return null;
-	}
-
-	/**
-	 * Release the lock only when it is still owned by this request.
-	 *
-	 * @param string $lock Lock value returned by acquire_queue_lock().
-	 */
-	private function release_queue_lock( string $lock ): void {
-		global $wpdb;
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- The owner check prevents an expired lock from releasing its replacement.
-		$wpdb->delete(
-			$wpdb->options,
-			[
-				'option_name'  => ZW_CACHEMAN_WARM_QUEUE_LOCK,
-				'option_value' => $lock,
-			],
-			[ '%s', '%s' ]
-		);
-		wp_cache_delete( ZW_CACHEMAN_WARM_QUEUE_LOCK, 'options' );
 	}
 
 	/**

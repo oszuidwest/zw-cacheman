@@ -25,7 +25,6 @@ define( 'ZW_CACHEMAN_QUEUE', 'zw_cacheman_queue' );
 define( 'ZW_CACHEMAN_SETTINGS', 'zw_cacheman_settings' );
 define( 'ZW_CACHEMAN_CRON_HOOK', 'zw_cacheman_cron_hook' );
 define( 'ZW_CACHEMAN_WARM_QUEUE', 'zw_cacheman_warm_queue' );
-define( 'ZW_CACHEMAN_WARM_QUEUE_LOCK', 'zw_cacheman_warm_queue_lock' );
 define( 'ZW_CACHEMAN_WARM_QUEUE_OVERFLOW', 'zw_cacheman_warm_queue_overflow' );
 
 // Includes required files.
@@ -57,7 +56,7 @@ function zw_cacheman_init() {
 
 	$sitemap_provider = ZW_CACHEMAN_Core\CachemanSitemapProviderFactory::detect( $logger );
 	$url_delver       = new ZW_CACHEMAN_Core\CachemanUrlDelver( $url_helper, $logger, $sitemap_provider );
-	$warmer           = new ZW_CACHEMAN_Core\CachemanWarmer( $logger, ! empty( $settings['enable_warming'] ) );
+	$warmer           = new ZW_CACHEMAN_Core\CachemanWarmer( $logger );
 	$manager          = new ZW_CACHEMAN_Core\CachemanManager( $api, $url_delver, $logger, $warmer );
 
 	// Only load admin interface in admin area.
@@ -116,7 +115,6 @@ function zw_cacheman_uninstall() {
 	delete_option( ZW_CACHEMAN_SETTINGS );
 	delete_option( ZW_CACHEMAN_QUEUE );
 	delete_option( ZW_CACHEMAN_WARM_QUEUE );
-	delete_option( ZW_CACHEMAN_WARM_QUEUE_LOCK );
 	delete_transient( ZW_CACHEMAN_WARM_QUEUE_OVERFLOW );
 
 	// Clean up log directory.

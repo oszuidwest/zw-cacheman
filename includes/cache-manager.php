@@ -273,12 +273,6 @@ readonly class CachemanManager {
 		// Purge first, then drain the warm queue so pages are re-fetched
 		// after their cache entries are gone.
 		$this->warmer->process_queue();
-
-		// Ensure WP-Cron is still scheduled.
-		if ( ! wp_next_scheduled( ZW_CACHEMAN_CRON_HOOK ) ) {
-			wp_schedule_event( time(), 'every_minute', ZW_CACHEMAN_CRON_HOOK );
-			$this->logger->debug( 'Manager', 'Re-scheduled missing cron job.' );
-		}
 	}
 
 	/**
