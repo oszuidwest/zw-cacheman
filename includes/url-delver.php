@@ -98,10 +98,10 @@ readonly class CachemanUrlDelver {
 				'type' => PurgeType::File,
 			];
 
-			// Post type collection endpoint.
+			// Post type collection endpoint as prefix, to catch query string variants.
 			$urls[] = [
 				'url'  => rest_url( 'wp/v2/' . $rest_base ),
-				'type' => PurgeType::File,
+				'type' => PurgeType::Prefix,
 			];
 		}
 
@@ -127,6 +127,8 @@ readonly class CachemanUrlDelver {
 	 * @return array<array{type: PurgeType, url: string}> List of purge items.
 	 */
 	public function get_low_priority_purge_items( \WP_Post $post, array $removed_terms = [] ): array {
+		global $wp_rewrite;
+
 		$urls = [];
 
 		// Post type archive as prefix.
@@ -164,6 +166,16 @@ readonly class CachemanUrlDelver {
 				wp_list_filter( $removed_terms, [ 'taxonomy' => $taxonomy ] )
 			);
 			if ( $terms ) {
+				// Taxonomy base as prefix, to catch combined term archives and feeds like /regio/a,b/feed/.
+				$structure = $wp_rewrite->get_extra_permastruct( $taxonomy );
+				$base      = $structure ? strstr( $structure, '%', true ) : false;
+				if ( false !== $base && '' !== trim( $base, '/' ) ) {
+					$urls[] = [
+						'url'  => home_url( '/' . trim( $base, '/' ) . '/' ),
+						'type' => PurgeType::Prefix,
+					];
+				}
+
 				foreach ( $terms as $term ) {
 					$term_link = get_term_link( $term, $taxonomy );
 					if ( ! is_wp_error( $term_link ) ) {
@@ -192,7 +204,7 @@ readonly class CachemanUrlDelver {
 							];
 							$urls[] = [
 								'url'  => rest_url( 'wp/v2/' . $rest_base ),
-								'type' => PurgeType::File,
+								'type' => PurgeType::Prefix,
 							];
 						}
 					}
@@ -299,10 +311,10 @@ readonly class CachemanUrlDelver {
 				'type' => PurgeType::File,
 			];
 
-			// Taxonomy collection endpoint.
+			// Taxonomy collection endpoint as prefix, to catch query string variants.
 			$urls[] = [
 				'url'  => rest_url( 'wp/v2/' . $rest_base ),
-				'type' => PurgeType::File,
+				'type' => PurgeType::Prefix,
 			];
 
 			// Taxonomies endpoint.
@@ -425,10 +437,10 @@ readonly class CachemanUrlDelver {
 				'type' => PurgeType::File,
 			];
 
-			// Taxonomy collection endpoint.
+			// Taxonomy collection endpoint as prefix, to catch query string variants.
 			$urls[] = [
 				'url'  => rest_url( 'wp/v2/' . $rest_base ),
-				'type' => PurgeType::File,
+				'type' => PurgeType::Prefix,
 			];
 
 			// Taxonomies endpoint.
