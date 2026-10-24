@@ -52,7 +52,7 @@ When you hit "Publish", the plugin immediately purges these URLs:
 
 4. **REST API endpoints** (direct access):
    - `https://sportsgazette.com/wp-json/wp/v2/posts/1234/` (article API endpoint)
-   - `https://sportsgazette.com/wp-json/wp/v2/posts/` (posts collection)
+   - `sportsgazette.com/wp-json/wp/v2/posts` (posts collection, as URL prefix, to catch query string variants like `?per_page=15`)
    - `https://sportsgazette.com/wp-json/` (API root)
 
 These high-priority purges happen immediately to ensure the most critical URLs are fresh.
@@ -62,18 +62,21 @@ These high-priority purges happen immediately to ensure the most critical URLs a
 Simultaneously, the plugin queues these related URLs for batch processing:
 
 1. **Category archives**:
+   - `sportsgazette.com/category` (as URL prefix, to catch combined archives and feeds like `/category/sports,local-news/feed/`)
    - `https://sportsgazette.com/category/sports/` (as URL prefix)
    - `https://sportsgazette.com/category/local-news/` (as URL prefix)
    - `https://sportsgazette.com/category/sports/feed/` (as exact URL)
    - `https://sportsgazette.com/category/local-news/feed/` (as exact URL)
 
 2. **Tag archives**:
+   - `sportsgazette.com/tag` (as URL prefix)
    - `https://sportsgazette.com/tag/championship/` (as URL prefix)
    - `https://sportsgazette.com/tag/basketball/` (as URL prefix)
    - `https://sportsgazette.com/tag/city-events/` (as URL prefix)
    - Related tag feeds (as exact URLs)
 
 3. **Custom taxonomy archives**:
+   - `sportsgazette.com/region` (as URL prefix)
    - `https://sportsgazette.com/region/downtown/` (as URL prefix)
    - `https://sportsgazette.com/region/downtown/feed/` (as exact URL)
 
@@ -89,7 +92,7 @@ Simultaneously, the plugin queues these related URLs for batch processing:
    - `https://sportsgazette.com/wp-json/wp/v2/tags/22/` (City Events tag endpoint)
    - `https://sportsgazette.com/wp-json/wp/v2/regions/3/` (Downtown region endpoint)
    - `https://sportsgazette.com/wp-json/wp/v2/users/42/` (Author endpoint)
-   - All taxonomy collection endpoints
+   - All taxonomy collection endpoints (as URL prefix)
 
 6. **XML sitemaps** (when Yoast SEO is active):
    - `https://sportsgazette.com/sitemap_index.xml` (as exact URL)
@@ -124,7 +127,7 @@ When a taxonomy term is created, edited, or deleted, the plugin performs similar
 
 3. **REST API endpoints**:
    - `https://sportsgazette.com/wp-json/wp/v2/categories/5/` (Sports category endpoint)
-   - `https://sportsgazette.com/wp-json/wp/v2/categories/` (Categories collection)
+   - `sportsgazette.com/wp-json/wp/v2/categories` (Categories collection, as URL prefix)
    - `https://sportsgazette.com/wp-json/wp/v2/taxonomies/` (Taxonomies endpoint)
 
 #### Queued Low-Priority Purging
@@ -165,6 +168,10 @@ For archives, the plugin uses Cloudflare's URL prefix purging. This is especiall
 - And all other pagination pages
 
 Without URL prefix purging, you would need to individually purge each pagination URL, which is inefficient and might miss some pages. The prefix approach ensures that all paginated archive pages are properly refreshed when content changes, improving both cache efficiency and ensuring visitors always see up-to-date content.
+
+A prefix purge also clears every cached URL with a query string under that prefix. That is why REST API collections are purged as prefixes: `sportsgazette.com/wp-json/wp/v2/posts` also clears `/wp-json/wp/v2/posts?per_page=15&_fields=title,content`.
+
+When a post changes, the base of each of its taxonomies (e.g. `sportsgazette.com/category`) is purged as a prefix too. This catches combined term archives and feeds such as `/category/sports,local-news/feed/`, wherever the changed term appears in the list. The trade-off: every cached archive and feed of that taxonomy is cleared and is rebuilt on its next request. Cloudflare matches prefixes as "starts with", so `sportsgazette.com/tag` can also clear unrelated paths such as `/tagline/`.
 
 ## Installation & Configuration
 
@@ -265,15 +272,10 @@ add_filter( 'zw_cacheman_sitemap_items', function ( array $items, array $context
 
 ## Known Limitations
 
-### REST API URLs with Query Strings
-The plugin only purges base REST API URLs without query parameters. URLs like `/wp-json/wp/v2/posts?per_page=15&_fields=title,content` won't be automatically purged.
+### Plain Permalinks
+Prefix purging needs pretty permalinks. With plain permalinks, REST API URLs look like `/?rest_route=/wp/v2/posts`, and Cloudflare cannot purge a prefix that contains a query string. REST API collections and taxonomy bases are then not purged.
 
-**Solution**: Configure Cloudflare Cache Rules to ignore query strings for REST API endpoints.
-
-### Combined Taxonomy Feeds
-The plugin purges individual taxonomy feeds (e.g., `/regio/roosendaal/feed/`) but not combined feeds with comma-separated terms (e.g., `/regio/roosendaal,bergen-op-zoom/feed/`).
-
-**Solution**: Configure Cloudflare Cache Rules to handle these URL patterns appropriately.
+Do not configure Cloudflare to ignore query strings for REST API endpoints: parameters such as `per_page`, `_fields` and filters return different responses.
 
 ## Troubleshooting
 
