@@ -42,6 +42,7 @@ readonly class CachemanManager {
 	) {
 		// Runs after terms and meta are stored, also in REST (block editor) saves.
 		add_action( 'wp_after_insert_post', $this->handle_post_saved( ... ), 10, 4 );
+		add_action( 'set_object_terms', $this->remember_removed_terms( ... ), 10, 6 );
 
 		// Hook into post deletion.
 		add_action( 'before_delete_post', $this->handle_post_deletion( ... ), 10, 2 );
@@ -120,7 +121,7 @@ readonly class CachemanManager {
 			);
 
 			// Queue low priority items for later processing.
-			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post );
+			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post, $this->removed_terms( $post->ID ) );
 
 			if ( ! empty( $low_priority_items ) ) {
 				$this->logger->debug( 'Manager', 'Queueing ' . count( $low_priority_items ) . ' low priority purge items for post ID ' . $post->ID );
@@ -129,6 +130,45 @@ readonly class CachemanManager {
 				$this->logger->debug( 'Manager', 'No low priority purge items found for post ID ' . $post->ID );
 			}
 		}
+	}
+
+	/**
+	 * Remember terms removed from a post, so their archives are purged when the post is saved.
+	 *
+	 * @param int        $object_id  Object ID.
+	 * @param array<int> $terms      Terms as passed to wp_set_object_terms() (unused).
+	 * @param array<int> $tt_ids     New term taxonomy IDs.
+	 * @param string     $taxonomy   Taxonomy slug.
+	 * @param bool       $append     Whether terms were appended (unused).
+	 * @param array<int> $old_tt_ids Term taxonomy IDs before the change.
+	 */
+	public function remember_removed_terms( $object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids ): void {
+		foreach ( array_diff( $old_tt_ids, $tt_ids ) as $tt_id ) {
+			$term = get_term_by( 'term_taxonomy_id', (int) $tt_id, $taxonomy );
+			if ( $term instanceof \WP_Term ) {
+				$this->removed_terms( (int) $object_id, $term );
+			}
+		}
+	}
+
+	/**
+	 * Request-local list of terms removed from a post. Adds $term when given, otherwise returns and clears the list.
+	 *
+	 * @param int           $post_id Post ID.
+	 * @param \WP_Term|null $term    Removed term to add.
+	 * @return array<\WP_Term> Removed terms.
+	 */
+	private function removed_terms( int $post_id, ?\WP_Term $term = null ): array {
+		static $removed = [];
+
+		if ( $term ) {
+			$removed[ $post_id ][] = $term;
+			return [];
+		}
+
+		$terms = $removed[ $post_id ] ?? [];
+		unset( $removed[ $post_id ] );
+		return $terms;
 	}
 
 	/**
