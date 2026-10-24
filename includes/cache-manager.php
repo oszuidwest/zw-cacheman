@@ -27,6 +27,13 @@ readonly class CachemanManager {
 	private const float QUEUE_LOCK_TTL_SECONDS = 30.0;
 
 	/**
+	 * Term taxonomy IDs removed from each post during this request.
+	 *
+	 * @var \ArrayObject<int, array<int>>
+	 */
+	private \ArrayObject $removed_tt_ids;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanAPI       $api        The API handler instance.
@@ -40,8 +47,17 @@ readonly class CachemanManager {
 		private CachemanLogger $logger,
 		private CachemanWarmer $warmer
 	) {
-		// Hook into post status transitions.
-		add_action( 'transition_post_status', $this->handle_post_status_change( ... ), 10, 3 );
+		/**
+		 * Typed for static analysis; a bare new \ArrayObject() has no key or value type.
+		 *
+		 * @var \ArrayObject<int, array<int>> $removed_tt_ids
+		 */
+		$removed_tt_ids       = new \ArrayObject();
+		$this->removed_tt_ids = $removed_tt_ids;
+
+		// Runs after terms and meta are stored, also in REST (block editor) saves.
+		add_action( 'wp_after_insert_post', $this->handle_post_saved( ... ), 10, 4 );
+		add_action( 'deleted_term_relationships', $this->remember_removed_terms( ... ), 10, 2 );
 
 		// Hook into post deletion.
 		add_action( 'before_delete_post', $this->handle_post_deletion( ... ), 10, 2 );
@@ -93,13 +109,17 @@ readonly class CachemanManager {
 	}
 
 	/**
-	 * Handle post status changes
+	 * Handle a saved post
 	 *
-	 * @param string   $new_status New post status.
-	 * @param string   $old_status Old post status.
-	 * @param \WP_Post $post Post object.
+	 * @param int           $post_id     Post ID.
+	 * @param \WP_Post      $post        Post object.
+	 * @param bool          $update      Whether this is an existing post being updated.
+	 * @param \WP_Post|null $post_before Post object before the update, null for new posts.
 	 */
-	public function handle_post_status_change( string $new_status, string $old_status, \WP_Post $post ): void {
+	public function handle_post_saved( int $post_id, \WP_Post $post, bool $update, ?\WP_Post $post_before ): void {
+		$new_status = $post->post_status;
+		$old_status = $post_before ? $post_before->post_status : 'new';
+
 		// Skip if autosave or revision.
 		if ( wp_is_post_autosave( $post ) || wp_is_post_revision( $post ) ) {
 			return;
@@ -116,7 +136,7 @@ readonly class CachemanManager {
 			);
 
 			// Queue low priority items for later processing.
-			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post );
+			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post, $this->take_removed_terms( $post->ID ) );
 
 			if ( ! empty( $low_priority_items ) ) {
 				$this->logger->debug( 'Manager', 'Queueing ' . count( $low_priority_items ) . ' low priority purge items for post ID ' . $post->ID );
@@ -125,6 +145,36 @@ readonly class CachemanManager {
 				$this->logger->debug( 'Manager', 'No low priority purge items found for post ID ' . $post->ID );
 			}
 		}
+	}
+
+	/**
+	 * Remember terms removed from a post, so their archives are purged when the post is saved.
+	 *
+	 * Only IDs are kept: deleting a term fires this for every post that had it.
+	 *
+	 * @param int               $object_id Object ID.
+	 * @param array<int|string> $tt_ids    Removed term taxonomy IDs.
+	 */
+	public function remember_removed_terms( int $object_id, array $tt_ids ): void {
+		$this->removed_tt_ids[ $object_id ] = array_merge( $this->removed_tt_ids[ $object_id ] ?? [], array_map( 'intval', $tt_ids ) );
+	}
+
+	/**
+	 * Return the terms removed from a post and forget them.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array<\WP_Term> Removed terms.
+	 */
+	private function take_removed_terms( int $post_id ): array {
+		$terms = [];
+		foreach ( array_unique( $this->removed_tt_ids[ $post_id ] ?? [] ) as $tt_id ) {
+			$term = get_term_by( 'term_taxonomy_id', $tt_id );
+			if ( $term instanceof \WP_Term ) {
+				$terms[] = $term;
+			}
+		}
+		unset( $this->removed_tt_ids[ $post_id ] );
+		return $terms;
 	}
 
 	/**

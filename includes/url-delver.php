@@ -122,10 +122,11 @@ readonly class CachemanUrlDelver {
 	/**
 	 * Get low priority purge items for a post (taxonomy, author archives, etc.)
 	 *
-	 * @param \WP_Post $post Post object.
+	 * @param \WP_Post        $post          Post object.
+	 * @param array<\WP_Term> $removed_terms Terms just removed from the post; their archives changed too.
 	 * @return array<array{type: PurgeType, url: string}> List of purge items.
 	 */
-	public function get_low_priority_purge_items( \WP_Post $post ): array {
+	public function get_low_priority_purge_items( \WP_Post $post, array $removed_terms = [] ): array {
 		$urls = [];
 
 		// Post type archive as prefix.
@@ -158,7 +159,11 @@ readonly class CachemanUrlDelver {
 		$taxonomies = get_object_taxonomies( $post->post_type );
 		foreach ( $taxonomies as $taxonomy ) {
 			$terms = get_the_terms( $post->ID, $taxonomy );
-			if ( $terms && ! is_wp_error( $terms ) ) {
+			$terms = array_merge(
+				is_array( $terms ) ? $terms : [],
+				wp_list_filter( $removed_terms, [ 'taxonomy' => $taxonomy ] )
+			);
+			if ( $terms ) {
 				foreach ( $terms as $term ) {
 					$term_link = get_term_link( $term, $taxonomy );
 					if ( ! is_wp_error( $term_link ) ) {
