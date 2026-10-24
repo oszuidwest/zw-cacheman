@@ -40,8 +40,8 @@ readonly class CachemanManager {
 		private CachemanLogger $logger,
 		private CachemanWarmer $warmer
 	) {
-		// Hook into post status transitions.
-		add_action( 'transition_post_status', $this->handle_post_status_change( ... ), 10, 3 );
+		// Runs after terms and meta are stored, also in REST (block editor) saves.
+		add_action( 'wp_after_insert_post', $this->handle_post_saved( ... ), 10, 4 );
 
 		// Hook into post deletion.
 		add_action( 'before_delete_post', $this->handle_post_deletion( ... ), 10, 2 );
@@ -93,13 +93,17 @@ readonly class CachemanManager {
 	}
 
 	/**
-	 * Handle post status changes
+	 * Handle a saved post
 	 *
-	 * @param string   $new_status New post status.
-	 * @param string   $old_status Old post status.
-	 * @param \WP_Post $post Post object.
+	 * @param int           $post_id     Post ID.
+	 * @param \WP_Post      $post        Post object.
+	 * @param bool          $update      Whether this is an existing post being updated.
+	 * @param \WP_Post|null $post_before Post object before the update, null for new posts.
 	 */
-	public function handle_post_status_change( string $new_status, string $old_status, \WP_Post $post ): void {
+	public function handle_post_saved( int $post_id, \WP_Post $post, bool $update, ?\WP_Post $post_before ): void {
+		$new_status = $post->post_status;
+		$old_status = $post_before ? $post_before->post_status : 'new';
+
 		// Skip if autosave or revision.
 		if ( wp_is_post_autosave( $post ) || wp_is_post_revision( $post ) ) {
 			return;
