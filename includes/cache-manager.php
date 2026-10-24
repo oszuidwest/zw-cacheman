@@ -42,7 +42,7 @@ readonly class CachemanManager {
 	) {
 		// Runs after terms and meta are stored, also in REST (block editor) saves.
 		add_action( 'wp_after_insert_post', $this->handle_post_saved( ... ), 10, 4 );
-		add_action( 'set_object_terms', $this->remember_removed_terms( ... ), 10, 6 );
+		add_action( 'deleted_term_relationships', $this->remember_removed_terms( ... ), 10, 3 );
 
 		// Hook into post deletion.
 		add_action( 'before_delete_post', $this->handle_post_deletion( ... ), 10, 2 );
@@ -135,15 +135,12 @@ readonly class CachemanManager {
 	/**
 	 * Remember terms removed from a post, so their archives are purged when the post is saved.
 	 *
-	 * @param int        $object_id  Object ID.
-	 * @param array<int> $terms      Terms as passed to wp_set_object_terms() (unused).
-	 * @param array<int> $tt_ids     New term taxonomy IDs.
-	 * @param string     $taxonomy   Taxonomy slug.
-	 * @param bool       $append     Whether terms were appended (unused).
-	 * @param array<int> $old_tt_ids Term taxonomy IDs before the change.
+	 * @param int        $object_id Object ID.
+	 * @param array<int> $tt_ids    Removed term taxonomy IDs.
+	 * @param string     $taxonomy  Taxonomy slug.
 	 */
-	public function remember_removed_terms( $object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids ): void {
-		foreach ( array_diff( $old_tt_ids, $tt_ids ) as $tt_id ) {
+	public function remember_removed_terms( $object_id, $tt_ids, $taxonomy ): void {
+		foreach ( $tt_ids as $tt_id ) {
 			$term = get_term_by( 'term_taxonomy_id', (int) $tt_id, $taxonomy );
 			if ( $term instanceof \WP_Term ) {
 				$this->removed_terms( (int) $object_id, $term );
