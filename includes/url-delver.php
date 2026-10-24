@@ -168,7 +168,7 @@ readonly class CachemanUrlDelver {
 			if ( $terms ) {
 				// Taxonomy base as prefix, to catch combined term archives and feeds like /regio/a,b/feed/.
 				$structure = $wp_rewrite->get_extra_permastruct( $taxonomy );
-				$base      = $structure ? strstr( $structure, '%', true ) : false;
+				$base      = $structure ? strstr( $structure, '%' . $taxonomy . '%', true ) : false;
 				if ( false !== $base && '' !== trim( $base, '/' ) ) {
 					$urls[] = [
 						'url'  => home_url( '/' . trim( $base, '/' ) . '/' ),

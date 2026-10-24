@@ -171,7 +171,7 @@ Without URL prefix purging, you would need to individually purge each pagination
 
 A prefix purge also clears every cached URL with a query string under that prefix. That is why REST API collections are purged as prefixes: `sportsgazette.com/wp-json/wp/v2/posts` also clears `/wp-json/wp/v2/posts?per_page=15&_fields=title,content`.
 
-When a post changes, the base of each of its taxonomies (e.g. `sportsgazette.com/category`) is purged as a prefix too. This catches combined term archives and feeds such as `/category/sports,local-news/feed/`, wherever the changed term appears in the list. The trade-off: every cached archive and feed of that taxonomy is cleared and is rebuilt on its next request.
+When a post changes, the base of each of its taxonomies (e.g. `sportsgazette.com/category`) is purged as a prefix too. This catches combined term archives and feeds such as `/category/sports,local-news/feed/`, wherever the changed term appears in the list. The trade-off: every cached archive and feed of that taxonomy is cleared and is rebuilt on its next request. Cloudflare matches prefixes as "starts with", so `sportsgazette.com/tag` can also clear unrelated paths such as `/tagline/`.
 
 ## Installation & Configuration
 
