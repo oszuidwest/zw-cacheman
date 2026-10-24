@@ -42,7 +42,7 @@ readonly class CachemanManager {
 	) {
 		// Runs after terms and meta are stored, also in REST (block editor) saves.
 		add_action( 'wp_after_insert_post', $this->handle_post_saved( ... ), 10, 4 );
-		add_action( 'deleted_term_relationships', $this->remember_removed_terms( ... ), 10, 3 );
+		add_action( 'deleted_term_relationships', $this->remember_removed_terms( ... ), 10, 2 );
 
 		// Hook into post deletion.
 		add_action( 'before_delete_post', $this->handle_post_deletion( ... ), 10, 2 );
@@ -135,35 +135,37 @@ readonly class CachemanManager {
 	/**
 	 * Remember terms removed from a post, so their archives are purged when the post is saved.
 	 *
+	 * Only IDs are kept: deleting a term fires this for every post that had it.
+	 *
 	 * @param int        $object_id Object ID.
 	 * @param array<int> $tt_ids    Removed term taxonomy IDs.
-	 * @param string     $taxonomy  Taxonomy slug.
 	 */
-	public function remember_removed_terms( $object_id, $tt_ids, $taxonomy ): void {
-		foreach ( $tt_ids as $tt_id ) {
-			$term = get_term_by( 'term_taxonomy_id', (int) $tt_id, $taxonomy );
-			if ( $term instanceof \WP_Term ) {
-				$this->removed_terms( (int) $object_id, $term );
-			}
-		}
+	public function remember_removed_terms( $object_id, $tt_ids ): void {
+		$this->removed_terms( (int) $object_id, array_map( 'intval', $tt_ids ) );
 	}
 
 	/**
-	 * Request-local list of terms removed from a post. Adds $term when given, otherwise returns and clears the list.
+	 * Request-local list of terms removed from a post. Adds $tt_ids when given, otherwise returns and clears the list.
 	 *
-	 * @param int           $post_id Post ID.
-	 * @param \WP_Term|null $term    Removed term to add.
+	 * @param int             $post_id Post ID.
+	 * @param array<int>|null $tt_ids  Removed term taxonomy IDs to add.
 	 * @return array<\WP_Term> Removed terms.
 	 */
-	private function removed_terms( int $post_id, ?\WP_Term $term = null ): array {
+	private function removed_terms( int $post_id, ?array $tt_ids = null ): array {
 		static $removed = [];
 
-		if ( $term ) {
-			$removed[ $post_id ][] = $term;
+		if ( null !== $tt_ids ) {
+			$removed[ $post_id ] = array_merge( $removed[ $post_id ] ?? [], $tt_ids );
 			return [];
 		}
 
-		$terms = $removed[ $post_id ] ?? [];
+		$terms = [];
+		foreach ( array_unique( $removed[ $post_id ] ?? [] ) as $tt_id ) {
+			$term = get_term_by( 'term_taxonomy_id', $tt_id );
+			if ( $term instanceof \WP_Term ) {
+				$terms[] = $term;
+			}
+		}
 		unset( $removed[ $post_id ] );
 		return $terms;
 	}
