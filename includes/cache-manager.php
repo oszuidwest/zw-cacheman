@@ -27,6 +27,13 @@ readonly class CachemanManager {
 	private const float QUEUE_LOCK_TTL_SECONDS = 30.0;
 
 	/**
+	 * Term taxonomy IDs removed from each post during this request.
+	 *
+	 * @var \ArrayObject<int, array<int>>
+	 */
+	private \ArrayObject $removed_tt_ids;
+
+	/**
 	 * Constructor
 	 *
 	 * @param CachemanAPI       $api        The API handler instance.
@@ -40,6 +47,14 @@ readonly class CachemanManager {
 		private CachemanLogger $logger,
 		private CachemanWarmer $warmer
 	) {
+		/**
+		 * Typed for static analysis; a bare new \ArrayObject() has no key or value type.
+		 *
+		 * @var \ArrayObject<int, array<int>> $removed_tt_ids
+		 */
+		$removed_tt_ids       = new \ArrayObject();
+		$this->removed_tt_ids = $removed_tt_ids;
+
 		// Runs after terms and meta are stored, also in REST (block editor) saves.
 		add_action( 'wp_after_insert_post', $this->handle_post_saved( ... ), 10, 4 );
 		add_action( 'deleted_term_relationships', $this->remember_removed_terms( ... ), 10, 2 );
@@ -121,7 +136,7 @@ readonly class CachemanManager {
 			);
 
 			// Queue low priority items for later processing.
-			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post, $this->removed_terms( $post->ID ) );
+			$low_priority_items = $this->url_delver->get_low_priority_purge_items( $post, $this->take_removed_terms( $post->ID ) );
 
 			if ( ! empty( $low_priority_items ) ) {
 				$this->logger->debug( 'Manager', 'Queueing ' . count( $low_priority_items ) . ' low priority purge items for post ID ' . $post->ID );
@@ -137,36 +152,28 @@ readonly class CachemanManager {
 	 *
 	 * Only IDs are kept: deleting a term fires this for every post that had it.
 	 *
-	 * @param int        $object_id Object ID.
-	 * @param array<int> $tt_ids    Removed term taxonomy IDs.
+	 * @param int               $object_id Object ID.
+	 * @param array<int|string> $tt_ids    Removed term taxonomy IDs.
 	 */
-	public function remember_removed_terms( $object_id, $tt_ids ): void {
-		$this->removed_terms( (int) $object_id, array_map( 'intval', $tt_ids ) );
+	public function remember_removed_terms( int $object_id, array $tt_ids ): void {
+		$this->removed_tt_ids[ $object_id ] = array_merge( $this->removed_tt_ids[ $object_id ] ?? [], array_map( 'intval', $tt_ids ) );
 	}
 
 	/**
-	 * Request-local list of terms removed from a post. Adds $tt_ids when given, otherwise returns and clears the list.
+	 * Return the terms removed from a post and forget them.
 	 *
-	 * @param int             $post_id Post ID.
-	 * @param array<int>|null $tt_ids  Removed term taxonomy IDs to add.
+	 * @param int $post_id Post ID.
 	 * @return array<\WP_Term> Removed terms.
 	 */
-	private function removed_terms( int $post_id, ?array $tt_ids = null ): array {
-		static $removed = [];
-
-		if ( null !== $tt_ids ) {
-			$removed[ $post_id ] = array_merge( $removed[ $post_id ] ?? [], $tt_ids );
-			return [];
-		}
-
+	private function take_removed_terms( int $post_id ): array {
 		$terms = [];
-		foreach ( array_unique( $removed[ $post_id ] ?? [] ) as $tt_id ) {
+		foreach ( array_unique( $this->removed_tt_ids[ $post_id ] ?? [] ) as $tt_id ) {
 			$term = get_term_by( 'term_taxonomy_id', $tt_id );
 			if ( $term instanceof \WP_Term ) {
 				$terms[] = $term;
 			}
 		}
-		unset( $removed[ $post_id ] );
+		unset( $this->removed_tt_ids[ $post_id ] );
 		return $terms;
 	}
 
