@@ -285,7 +285,7 @@ The plugin purges individual taxonomy feeds (e.g., `/regio/roosendaal/feed/`) bu
 ## Requirements
 
 - WordPress 7.0+
-- PHP 8.3+
+- PHP 8.4+
 - Active Cloudflare account with API access
 - A Cloudflare plan that supports URL prefix purging (verified on Business; file purging works on all plans)
 - Properly configured WP-Cron

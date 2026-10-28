@@ -8,7 +8,7 @@
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Requires at least: 7.0
- * Requires PHP: 8.3
+ * Requires PHP: 8.4
  * Text Domain: zw-cacheman
  *
  * @package ZuidWestCacheMan
