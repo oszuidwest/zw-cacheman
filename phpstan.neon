@@ -1,6 +1,6 @@
 parameters:
   level: 6
-  phpVersion: 80300 # Minimum PHP version we support
+  phpVersion: 80400 # Minimum PHP version we support
   paths:
     - zw-cacheman.php
     - includes
